@@ -41,6 +41,8 @@ import InvoiceDetailPage from "@/pages/purchases/InvoiceDetailPage";
 import CreateAdhocInvoicePage from "@/pages/purchases/CreateAdhocInvoicePage";
 import AdhocInvoiceDetailPage from "@/pages/purchases/AdhocInvoiceDetailPage";
 import SettingsPage from "@/pages/settings/SettingsPage";
+import CustomerListPage from "@/pages/selling/CustomerListPage";
+import SupplierListPage from "@/pages/buying/SupplierListPage";
 
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -87,6 +89,8 @@ export default function AppRouter() {
                 />
                 <Route path="app/companies" element={<CompanyListPage />} />
                 <Route path="app/companies/:id" element={<PartyDetailView />} />
+                <Route path="app/selling/customers" element={<CustomerListPage />} />
+                <Route path="app/buying/parties" element={<SupplierListPage />} />
 
                 {/* 3. Add the New Purchases Route Here */}
                 <Route

@@ -267,13 +267,13 @@ export default function CreateInwardPage() {
     return (
         <div style={{ maxWidth: '1536px', width: '100%', margin: '0 auto', paddingBottom: '40px' }}>
             {/* ─── Header bar matching CreatePurchaseOrderPage ─── */}
-            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex justify-between items-center mt-2 shadow-sm">
+            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex flex-wrap justify-between items-center gap-3 mt-2 shadow-sm">
                 <Space size="middle">
                     <Button type="text" icon={<LeftOutlined />} onClick={() => navigate(`/app/purchases/${po.id}`)} className="text-white hover:text-gray-200" />
                     <InboxOutlined style={{ fontSize: '18px' }} />
                     <Title level={4} style={{ margin: 0, color: 'white' }}>Inward Document</Title>
                 </Space>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                     <Button type="text" className="text-white hover:text-gray-200"><QuestionCircleOutlined /></Button>
                     <Button
                         onClick={() => navigate(`/app/purchases/${po.id}`)}
@@ -422,7 +422,7 @@ export default function CreateInwardPage() {
 
                 {/* ─── Items Table Section ─── */}
                 <div className="px-4">
-                    <div className="mb-4 flex justify-between items-center">
+                    <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
                         <Space>
                             <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>Download Item Template</Button>
                             <Button icon={<UploadOutlined />}>Bulk Upload</Button>
@@ -471,7 +471,7 @@ export default function CreateInwardPage() {
                     </Row>
                     
                     {/* Action Buttons */}
-                    <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+                    <div className="flex flex-wrap justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
                         <Button size="large" onClick={() => handleSave('draft')} loading={saving} className="px-8">SAVE DRAFT</Button>
                         <Button size="large" type="primary" onClick={() => handleSave('send')} loading={saving} className="px-8">SAVE AND SEND</Button>
                     </div>

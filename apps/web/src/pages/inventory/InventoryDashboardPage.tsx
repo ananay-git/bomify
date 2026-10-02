@@ -124,6 +124,8 @@ function Section({
                     justifyContent: "space-between",
                     alignItems: "center",
                     marginBottom: 20,
+                    flexWrap: "wrap",
+                    gap: 8,
                 }}
             >
                 <Title level={5} style={{ margin: 0, fontWeight: 700 }}>
@@ -225,15 +227,15 @@ export default function InventoryDashboardPage() {
     }));
 
     return (
-        <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
+        <div className="p-3 sm:p-6" style={{ maxWidth: 1200, margin: "0 auto" }}>
             {/* ── Page Header ── */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center" style={{ marginBottom: 28 }}>
                 <div>
                     <Title level={3} style={{ margin: 0, fontWeight: 700 }}>
                         Inventory Dashboard
                     </Title>
                 </div>
-                <Button type="link" onClick={() => navigate("/app/inventory")} style={{ color: "#008b8b", fontWeight: 500 }}>
+                <Button type="link" onClick={() => navigate("/app/inventory")} style={{ color: "#008b8b", fontWeight: 500, padding: 0, alignSelf: "flex-start" }}>
                     All Features <ArrowRightOutlined />
                 </Button>
             </div>
@@ -242,7 +244,7 @@ export default function InventoryDashboardPage() {
             <Section
                 title="Inventory Overview"
                 extra={
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                         <Text style={{ fontSize: 12, color: "#8c8c8c" }}>
                             Last updated: {lastUpdated}
                         </Text>
@@ -303,8 +305,8 @@ export default function InventoryDashboardPage() {
                 />
 
                 {/* Top Selling & Purchased side-by-side */}
-                <Row gutter={24}>
-                    <Col span={12}>
+                <Row gutter={[24, 24]}>
+                    <Col xs={24} md={12}>
                         <Text strong style={{ color: "#262626", fontSize: 13, display: "block", marginBottom: 12 }}>
                             Top 5 Selling Items (Last 3 months){" "}
                             <Tooltip title="Based on sales order line items in the last 90 days">
@@ -321,7 +323,7 @@ export default function InventoryDashboardPage() {
                             locale={{ emptyText: "No sales data yet" }}
                         />
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                         <Text strong style={{ color: "#262626", fontSize: 13, display: "block", marginBottom: 12 }}>
                             Top 5 Purchased Items (Last 3 months){" "}
                             <Tooltip title="Based on purchase orders in the last 90 days">
@@ -352,7 +354,7 @@ export default function InventoryDashboardPage() {
             >
                 <Row gutter={[16, 16]}>
                     {stockLevelCards.map((c) => (
-                        <Col span={4} key={c.key}>
+                        <Col xs={12} sm={8} md={4} key={c.key}>
                             <StockLevelCard
                                 label={c.label}
                                 count={data.stock_levels[c.key] as number}
@@ -366,7 +368,7 @@ export default function InventoryDashboardPage() {
                     ))}
                 </Row>
 
-                <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                     <Text style={{ color: "#8c8c8c", fontSize: 13 }}>
                         Total Inventory Items - <Text strong>{data.stock_levels.total_items}</Text>
                     </Text>
@@ -397,10 +399,10 @@ export default function InventoryDashboardPage() {
                 }
             >
                 <Row gutter={24} style={{ marginBottom: 20 }}>
-                    <Col span={8}>
+                    <Col xs={24} md={8}>
                         <Statistic title="Total Items" value={data.stock_valuation_count} />
                     </Col>
-                    <Col span={16}>
+                    <Col xs={24} md={16}>
                         <Statistic
                             title="Stock Valuation"
                             value={data.stock_valuation_value}

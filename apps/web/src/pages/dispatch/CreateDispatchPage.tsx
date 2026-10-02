@@ -263,14 +263,14 @@ export default function CreateDispatchPage() {
     return (
         <div style={{ maxWidth: '1536px', width: '100%', margin: '0 auto', paddingBottom: '40px' }}>
             {/* Header */}
-            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex justify-between items-center mt-2 shadow-sm">
+            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex flex-wrap justify-between items-center gap-3 mt-2 shadow-sm">
                 <Space size="middle">
                     <Button type="text" icon={<LeftOutlined />} onClick={() => navigate('/app/dispatch')} className="text-white hover:text-gray-200" />
                     <TruckOutlined style={{ fontSize: '18px' }} />
                     <Title level={4} style={{ margin: 0, color: 'white' }}>Create Dispatch</Title>
                     <Tag color="blue" style={{ borderRadius: 12 }}>{nextDispatchNumber}</Tag>
                 </Space>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                     <Button onClick={() => navigate('/app/dispatch')} icon={<CloseOutlined />} danger ghost
                         style={{ borderColor: '#ff4d4f', color: '#ff7875', borderRadius: 6, fontWeight: 500 }}>
                         Cancel
@@ -370,7 +370,7 @@ export default function CreateDispatchPage() {
                 <div className="px-4">
                     {items.length > 0 ? (
                         <>
-                            <div className="mb-4 flex justify-between items-center">
+                            <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
                                 <Text strong style={{ fontSize: 14, color: '#262626' }}>
                                     <InboxOutlined style={{ marginRight: 8 }} />
                                     Items to Dispatch
@@ -413,7 +413,7 @@ export default function CreateDispatchPage() {
                     )}
 
                     {/* Action Buttons */}
-                    <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+                    <div className="flex flex-wrap justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
                         <Button size="large" onClick={() => navigate('/app/dispatch')} className="px-8">CANCEL</Button>
                         <Button size="large" icon={<SaveOutlined />} onClick={() => handleSave(true)} loading={loading} className="px-8">
                             SAVE AS DRAFT

@@ -8,3 +8,90 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
+
+/* Prevent accidental horizontal scroll of the whole page on small screens */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ───────────────── Mobile / responsive adjustments ───────────────── */
+@media (max-width: 1024px) {
+  /* Ant Design tables: scroll horizontally instead of breaking the layout */
+  .ant-table-wrapper {
+    max-width: 100%;
+  }
+  .ant-table-wrapper .ant-table-content,
+  .ant-table-wrapper .ant-table-body {
+    overflow-x: auto !important;
+  }
+  .ant-table-wrapper .ant-table-cell {
+    white-space: nowrap;
+  }
+
+  /* Modals and drawers: use most of the viewport width */
+  .ant-modal {
+    max-width: calc(100vw - 24px) !important;
+    margin: 12px auto !important;
+  }
+  .ant-drawer-content-wrapper {
+    max-width: 90vw !important;
+  }
+
+  /* Tighter paddings so content isn't cramped on small screens.
+     !important is required because many pages set body padding inline via
+     AntD's `styles.body` prop, which otherwise beats a plain class rule. */
+  .ant-card-body {
+    padding: 16px !important;
+  }
+
+  /* Let horizontal Space groups (filter rows, toolbars) wrap instead of overflowing.
+     The vertical Space used for table sort arrows is unaffected. */
+  .ant-space-horizontal {
+    flex-wrap: wrap;
+  }
+}
+
+/* Phones: stack wide, fixed-span Ant Design columns to full width so multi-card
+   form layouts (e.g. create-document pages) don't crush their content.
+   Responsive columns (xs/sm/md variants) use different classes and are untouched.
+   Half-width (span 12) and quarter (span 6) fixed grids are intentionally left
+   as-is so small side-by-side fields keep their layout. */
+@media (max-width: 767px) {
+  .ant-col-7, .ant-col-8, .ant-col-9, .ant-col-10, .ant-col-11,
+  .ant-col-13, .ant-col-14, .ant-col-15, .ant-col-16, .ant-col-17,
+  .ant-col-18, .ant-col-19, .ant-col-20, .ant-col-21, .ant-col-22, .ant-col-23 {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Page titles scale down a touch on phones */
+  .ant-typography h1,
+  h1.ant-typography {
+    font-size: 22px !important;
+  }
+  .ant-typography h2,
+  h2.ant-typography {
+    font-size: 19px !important;
+  }
+
+  /* Let multi-column Ant grids stack when columns use fixed spans */
+  .ant-card-body {
+    padding: 14px;
+  }
+
+  /* Descriptions tables become readable by stacking label/value */
+  .ant-descriptions-view {
+    overflow-x: auto;
+  }
+
+  /* Full-width primary action buttons feel better on phones in toolbars */
+  .ant-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+

@@ -316,14 +316,14 @@ export default function CreateInvoicePage() {
     return (
         <div style={{ maxWidth: '1536px', width: '100%', margin: '0 auto', paddingBottom: '40px' }}>
             {/* Header */}
-            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex justify-between items-center mt-2 shadow-sm">
+            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex flex-wrap justify-between items-center gap-3 mt-2 shadow-sm">
                 <Space size="middle">
                     <Button type="text" icon={<LeftOutlined />} onClick={() => navigate('/app/purchases')} className="text-white hover:text-gray-200" />
                     <FormOutlined style={{ fontSize: '18px' }} />
                     <Title level={4} style={{ margin: 0, color: 'white' }}>Invoice</Title>
                 </Space>
-                <div className="flex items-center gap-4">
-                    <Text style={{ color: '#ffffff', fontSize: 12 }}>Supplier ID: {supplierId}</Text>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Text style={{ color: '#ffffff', fontSize: 12, whiteSpace: 'nowrap' }}>Supplier ID: {supplierId}</Text>
                     <Select defaultValue="INR" style={{ width: 90 }} popupMatchSelectWidth={false}><Option value="INR">INR - ₹</Option><Option value="USD">USD - $</Option></Select>
                     <Button type="text" className="text-white hover:text-gray-200"><QuestionCircleOutlined /></Button>
                     <Button
@@ -407,7 +407,7 @@ export default function CreateInvoicePage() {
 
                 {/* Items Table Section */}
                 <div className="px-4">
-                    <div className="mb-4 flex justify-between items-center">
+                    <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
                         <Space><Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>Download Item Template</Button><Button icon={<UploadOutlined />}>Bulk Upload</Button></Space>
                         <Space align="center" size="middle">
                             <div className="flex items-center gap-2"><Text className="text-xs font-medium text-slate-500">Price type</Text><Select value={priceType} onChange={setPriceType} size="small" style={{ width: 180 }} options={[{value:'default',label:'Default Price'},{value:'regular',label:'Regular Buying Price'},{value:'wholesale',label:'Wholesale Buying Price'}]} /></div>
@@ -480,7 +480,7 @@ export default function CreateInvoicePage() {
                     </Row>
                     
                     {/* Action Buttons */}
-                    <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+                    <div className="flex flex-wrap justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
                         <Button size="large" onClick={() => handleSave('draft')} loading={loading} className="px-8">SAVE DRAFT</Button>
                         <Button size="large" type="primary" onClick={() => handleSave('sent')} loading={loading} className="px-8">SAVE AND SEND</Button>
                     </div>

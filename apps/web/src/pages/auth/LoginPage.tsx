@@ -42,9 +42,10 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         background: "#f0f2f5",
+        padding: 16,
       }}
     >
-      <Card style={{ width: 400, boxShadow: "0 2px 8px rgba(0,0,0,0.09)" }}>
+      <Card style={{ width: "100%", maxWidth: 400, boxShadow: "0 2px 8px rgba(0,0,0,0.09)" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <Title level={3} style={{ marginBottom: 4 }}>
             QuadStack

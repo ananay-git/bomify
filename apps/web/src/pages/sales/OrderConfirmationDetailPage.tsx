@@ -75,14 +75,14 @@ export default function OrderConfirmationDetailPage() {
 
     return (
         <div style={{ padding: '0px 0px 32px 0px' }}>
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
                 <Title level={3} style={{ margin: 0, fontWeight: 700 }}>
                     Order Confirmation: {oc.doc_number} <Tag color={statusColor}>{oc.status.toUpperCase()}</Tag>
                 </Title>
             </div>
 
             <Card style={{ marginBottom: 24 }}>
-                <Descriptions bordered size="small" column={2}>
+                <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
                     <Descriptions.Item label="Buyer Name">{buyerName}</Descriptions.Item>
                     <Descriptions.Item label="Document Date">{new Date(oc.doc_date).toLocaleDateString()}</Descriptions.Item>
                     <Descriptions.Item label="Delivery Date">{oc.delivery_date ? new Date(oc.delivery_date).toLocaleDateString() : 'N/A'}</Descriptions.Item>

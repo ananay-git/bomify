@@ -163,7 +163,7 @@ function AllProcessTab({ refreshTick }: { refreshTick: number }) {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
         <div className="flex items-center gap-2">
           <Title level={4} style={{ margin: 0, fontWeight: 700 }}>All Production Process</Title>
           <Tooltip title="Track all production process execution"><InfoCircleOutlined style={{ color: "#bfbfbf" }} /></Tooltip>
@@ -313,7 +313,7 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
         <div className="flex items-center gap-2">
           <Title level={4} style={{ margin: 0, fontWeight: 700 }}>Work Orders</Title>
           <Tooltip title="Manage work orders — demand from customers"><InfoCircleOutlined style={{ color: "#bfbfbf" }} /></Tooltip>
@@ -438,7 +438,7 @@ function BOMTab({ refreshTick }: { refreshTick: number }) {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
         <div className="flex items-center gap-2">
           <Title level={4} style={{ margin: 0, fontWeight: 700 }}>Bill of Materials</Title>
           <Tooltip title="Define recipes — what raw materials make a finished good"><InfoCircleOutlined style={{ color: "#bfbfbf" }} /></Tooltip>

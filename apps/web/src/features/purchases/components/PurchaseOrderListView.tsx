@@ -127,7 +127,7 @@ export default function PurchaseOrderListView() {
 
     return (
         <div className="p-6 max-w-400 mx-auto w-full bg-gray-50/30 min-h-screen">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">
                     Sales & Purchase
                 </h1>
@@ -172,7 +172,7 @@ export default function PurchaseOrderListView() {
                 centered
                 className="rounded-xl overflow-hidden"
             >
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
                     <h2 className="text-xl font-bold text-[#0e3b5e] m-0">
                         Please Add/Select Supplier
                     </h2>

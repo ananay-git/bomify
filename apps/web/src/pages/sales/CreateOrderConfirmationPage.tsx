@@ -336,8 +336,8 @@ export default function CreateOrderConfirmationPage() {
                     <Button type="text" onClick={() => navigate(-1)} icon={<LeftOutlined style={{ color: '#fff' }} />} />
                     <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 500 }}><Form.Item name="title" noStyle><Input variant="borderless" placeholder="Order Confirmation" disabled style={{ color: '#fff', padding: 0, fontSize: '18px', width: '300px' }}/></Form.Item>Order Confirmation</Title>
                 </div>
-                <div className="flex items-center gap-4">
-                    <Text style={{ color: '#bfbfbf', fontSize: '12px' }}>Buyer ID: {buyerId || 'N/A'}</Text>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Text style={{ color: '#bfbfbf', fontSize: '12px', whiteSpace: 'nowrap' }}>Buyer ID: {buyerId || 'N/A'}</Text>
                     <Select defaultValue="inr" size="small" style={{ width: 80 }} popupMatchSelectWidth={false}>
                         <Option value="inr">INR - ₹</Option>
                         <Option value="usd">USD - $</Option>

@@ -519,7 +519,7 @@ export default function PurchaseOrderDetailPage() {
                                                             </Tooltip>
                                                         )}
                                                         <Tooltip title="View in Inventory">
-                                                            <a style={{ fontSize: 10, color: '#1677ff', cursor: 'pointer' }} onClick={() => navigate(`/app/inventory/${item.item_id}`)}>
+                                                            <a style={{ fontSize: 10, color: '#1677ff', cursor: 'pointer' }} onClick={() => navigate('/app/inventory')}>
                                                                 <ExportOutlined style={{ marginRight: 3 }} />Inventory
                                                             </a>
                                                         </Tooltip>

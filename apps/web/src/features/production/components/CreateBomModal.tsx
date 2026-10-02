@@ -11,6 +11,7 @@ import {
 } from "@ant-design/icons";
 import { bomApi } from "@/features/production/api";
 import { inventoryApi, InventoryItem } from "@/features/inventory/api";
+import { useSidebar } from "@/hooks/use-sidebar-state";
 
 const { Text } = Typography;
 
@@ -50,6 +51,14 @@ interface ScrapRow {
   comment: string;
 }
 
+interface RoutingRow {
+  key: string;
+  operation: string;
+  workstation: string;
+  time_mins: number | null;
+  comment: string;
+}
+
 interface OtherCharge {
   key: string;
   classification: string;
@@ -77,12 +86,15 @@ const UOM_OPTIONS = ["Kg", "g", "Liter", "ml", "Meter", "cm", "Piece", "Box", "D
 const newFGRow = (): FGRow => ({ key: crypto.randomUUID(), item_id: null, name: "", category: "", quantity: null, unit: "", cost_allocation: null, comment: "" });
 const newRMRow = (): RMRow => ({ key: crypto.randomUUID(), item_id: null, name: "", category: "", quantity: null, unit: "", comment: "" });
 const newScrapRow = (): ScrapRow => ({ key: crypto.randomUUID(), item_id: null, name: "", category: "", quantity: null, unit: "", cost_allocation: null, comment: "" });
+const newRoutingRow = (): RoutingRow => ({ key: crypto.randomUUID(), operation: "", workstation: "", time_mins: null, comment: "" });
 
 /* ================================================================== */
 /*  CreateBomModal                                                     */
 /* ================================================================== */
 
 export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
+  const { isMobile } = useSidebar();
+
   // Document header
   const [nextBomId, setNextBomId] = useState("");
   const [bomName, setBomName] = useState("");
@@ -97,12 +109,14 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
   const [fgRows, setFgRows] = useState<FGRow[]>([newFGRow()]);
   const [rmRows, setRmRows] = useState<RMRow[]>([newRMRow()]);
   const [scrapRows, setScrapRows] = useState<ScrapRow[]>([]);
+  const [routingRows, setRoutingRows] = useState<RoutingRow[]>([]);
   const [otherCharges, setOtherCharges] = useState<OtherCharge[]>(DEFAULT_OTHER_CHARGES.map(c => ({ ...c })));
 
   // Visibility of optional sections
   const [showRM, setShowRM] = useState(true);
   const [showFG, setShowFG] = useState(true);
   const [showScrap, setShowScrap] = useState(false);
+  const [showRouting, setShowRouting] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -123,10 +137,12 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
     setFgRows([newFGRow()]);
     setRmRows([newRMRow()]);
     setScrapRows([]);
+    setRoutingRows([]);
     setOtherCharges(DEFAULT_OTHER_CHARGES.map(c => ({ ...c })));
     setShowRM(true);
     setShowFG(true);
     setShowScrap(false);
+    setShowRouting(false);
   }, [open]);
 
   /* ─ Helpers to update rows ─ */
@@ -138,6 +154,9 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
   }, []);
   const updateScrap = useCallback((key: string, field: keyof ScrapRow, value: unknown) => {
     setScrapRows(prev => prev.map(r => r.key === key ? { ...r, [field]: value } : r));
+  }, []);
+  const updateRouting = useCallback((key: string, field: keyof RoutingRow, value: unknown) => {
+    setRoutingRows(prev => prev.map(r => r.key === key ? { ...r, [field]: value } : r));
   }, []);
   const updateCharge = useCallback((key: string, field: keyof OtherCharge, value: unknown) => {
     setOtherCharges(prev => prev.map(r => r.key === key ? { ...r, [field]: value } : r));
@@ -314,6 +333,21 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
     },
   ];
 
+  const routingColumns = [
+    { title: "#", key: "idx", width: 50, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
+    { title: "Operation", key: "operation", width: 200, render: (_: unknown, r: RoutingRow) => <Input value={r.operation} placeholder="e.g. Cutting" variant="borderless" onChange={e => updateRouting(r.key, "operation", e.target.value)} /> },
+    { title: "Workstation", key: "workstation", width: 180, render: (_: unknown, r: RoutingRow) => <Input value={r.workstation} placeholder="e.g. Machine 1" variant="borderless" onChange={e => updateRouting(r.key, "workstation", e.target.value)} /> },
+    { title: "Time (mins)", key: "time", width: 130, render: (_: unknown, r: RoutingRow) => <InputNumber value={r.time_mins} min={0} variant="borderless" style={{ width: "100%" }} onChange={v => updateRouting(r.key, "time_mins", v)} /> },
+    { title: "Comment", key: "comment", width: 200, render: (_: unknown, r: RoutingRow) => <Input value={r.comment} variant="borderless" onChange={e => updateRouting(r.key, "comment", e.target.value)} /> },
+    {
+      title: "", key: "actions", width: 50, render: (_: unknown, r: RoutingRow) => (
+        <Popconfirm title="Remove this step?" onConfirm={() => setRoutingRows(prev => prev.filter(x => x.key !== r.key))}>
+          <Button type="text" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
+    },
+  ];
+
   const chargeColumns = [
     { title: "#", key: "idx", width: 60, render: (_: unknown, __: unknown, idx: number) => idx + 1 },
     { title: "Classification", dataIndex: "classification", key: "classification", width: 300 },
@@ -336,6 +370,15 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
     background: "#e6f7f2",
   };
 
+  // Mobile: each add action sits directly under the section it belongs to.
+  const mobileAddButton = (label: string, color: string, onClick?: () => void) => (
+    <div style={{ display: "flex", justifyContent: "center", margin: "0 0 16px", padding: "4px 0", borderBottom: "1px solid #f0f0f0" }}>
+      <Button type="link" style={{ color, fontWeight: 500 }} icon={<PlusOutlined style={{ color }} />} onClick={onClick}>
+        {label}
+      </Button>
+    </div>
+  );
+
   /* ================================================================ */
   /*  Render                                                            */
   /* ================================================================ */
@@ -356,7 +399,7 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
       styles={{ body: { padding: 0, maxHeight: "80vh", overflowY: "auto" } }}
     >
       {/* ── Info Banner ── */}
-      <div style={{ background: "#f0faf6", padding: "12px 24px", borderBottom: "1px solid #e8e8e8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "#f0faf6", padding: "12px 24px", borderBottom: "1px solid #e8e8e8", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <Text style={{ color: "#389e7f", fontSize: 13 }}>
           Create new bill of material by adding raw material and routing required to get the finished product.
         </Text>
@@ -376,8 +419,8 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
             label: sectionHeader("Document Detail", "Enter basic BOM details such as document ID, name, and store assignments"),
             children: (
               <div>
-                <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-                  <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+                  <div style={{ flex: "1 1 200px" }}>
                     <Text style={{ display: "block", fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>Document Number</Text>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <Select value={nextBomId} style={{ width: 180 }} disabled>
@@ -386,26 +429,26 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
                       <Text style={{ color: "#389e7f", cursor: "pointer", fontSize: 13 }}>Customize</Text>
                     </div>
                   </div>
-                  <div style={{ flex: 2 }}>
+                  <div style={{ flex: "2 1 220px" }}>
                     <Text style={{ display: "block", fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>Document Name</Text>
                     <Input value={bomName} onChange={e => setBomName(e.target.value)} placeholder="Enter BOM name" />
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
-                  <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+                  <div style={{ flex: "1 1 200px" }}>
                     <Text style={{ display: "block", fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>FG Store</Text>
                     <Select value={fgStore} onChange={setFgStore} style={{ width: "100%" }} options={STORE_OPTIONS.map(s => ({ value: s, label: s }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: "1 1 200px" }}>
                     <Text style={{ display: "block", fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>RM Store</Text>
                     <Select value={rmStore} onChange={setRmStore} style={{ width: "100%" }} options={STORE_OPTIONS.map(s => ({ value: s, label: s }))} />
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: "1 1 200px" }}>
                     <Text style={{ display: "block", fontSize: 12, color: "#8c8c8c", marginBottom: 4 }}>Scrap/By-product Store</Text>
                     <Select value={scrapStore} onChange={setScrapStore} style={{ width: "100%" }} options={STORE_OPTIONS.map(s => ({ value: s, label: s }))} />
                   </div>
                 </div>
-                <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16, display: "flex", gap: 24 }}>
+                <div style={{ borderTop: "1px solid #f0f0f0", paddingTop: 16, display: "flex", flexWrap: "wrap", gap: 24 }}>
                   <Button type="link" icon={<PaperClipOutlined />} style={{ padding: 0, color: "#389e7f", fontWeight: 500 }}>Attachments</Button>
                   <Button type="link" icon={<FileTextOutlined />} style={{ padding: 0, color: "#595959" }}>Add Description</Button>
                   <Button type="link" icon={<MessageOutlined />} style={{ padding: 0, color: "#595959" }}>Add Comments</Button>
@@ -415,13 +458,14 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
           }]}
         />
 
-        {/* ── Quick Action Links ── */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 24, margin: "20px 0", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
+        {/* ── Quick Action Links (desktop) ── */}
+        {!isMobile && <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 24, margin: "20px 0", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
           <Button type="link" style={{ color: "#1890ff", fontWeight: 500 }} icon={<PlusOutlined style={{ color: "#1890ff" }} />}
             onClick={() => { setShowRM(true); setRmRows(prev => [...prev, newRMRow()]); }}>
             Add Raw Materials
           </Button>
-          <Button type="link" style={{ color: "#faad14", fontWeight: 500 }} icon={<PlusOutlined style={{ color: "#faad14" }} />}>
+          <Button type="link" style={{ color: "#faad14", fontWeight: 500 }} icon={<PlusOutlined style={{ color: "#faad14" }} />}
+            onClick={() => { setShowRouting(true); setRoutingRows(prev => [...prev, newRoutingRow()]); }}>
             Add Routing
           </Button>
           <Button type="link" style={{ color: "#1890ff", fontWeight: 500 }} icon={<PlusOutlined style={{ color: "#1890ff" }} />}
@@ -432,7 +476,9 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
             onClick={() => { setShowFG(true); setFgRows(prev => [...prev, newFGRow()]); }}>
             Add Finished Goods
           </Button>
-        </div>
+        </div>}
+
+        {isMobile && <div style={{ height: 12 }} />}
 
         {/* ── Finished Goods ── */}
         {showFG && (
@@ -458,6 +504,7 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
             }]}
           />
         )}
+        {isMobile && mobileAddButton("Add Finished Goods", "#52c41a", () => { setShowFG(true); setFgRows(prev => [...prev, newFGRow()]); })}
 
         {/* ── Raw Materials ── */}
         {showRM && (
@@ -480,19 +527,57 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
                     style={{ border: "1px solid #e8e8e8", borderRadius: 8 }}
                     onHeaderRow={() => ({ style: tableHeaderStyle })}
                   />
-                  <Button
+                  {!isMobile && <Button
                     type="dashed"
                     icon={<PlusOutlined />}
                     onClick={() => setRmRows(prev => [...prev, newRMRow()])}
                     style={{ marginTop: 12, color: "#389e7f", borderColor: "#389e7f" }}
                   >
                     Add Raw Material Row
-                  </Button>
+                  </Button>}
                 </>
               ),
             }]}
           />
         )}
+        {isMobile && mobileAddButton("Add Raw Materials", "#1890ff", () => { setShowRM(true); setRmRows(prev => [...prev, newRMRow()]); })}
+
+        {/* ── Routing ── */}
+        {showRouting && (
+          <Collapse
+            defaultActiveKey={["routing"]}
+            ghost
+            style={{ marginBottom: 16 }}
+            items={[{
+              key: "routing",
+              label: sectionHeader("Routing", "Operations and workstations required to produce the finished good"),
+              children: (
+                <>
+                  <Table
+                    columns={routingColumns}
+                    dataSource={routingRows}
+                    rowKey="key"
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: 800 }}
+                    locale={{ emptyText: "No routing steps added" }}
+                    style={{ border: "1px solid #e8e8e8", borderRadius: 8 }}
+                    onHeaderRow={() => ({ style: tableHeaderStyle })}
+                  />
+                  {!isMobile && <Button
+                    type="dashed"
+                    icon={<PlusOutlined />}
+                    onClick={() => setRoutingRows(prev => [...prev, newRoutingRow()])}
+                    style={{ marginTop: 12, color: "#389e7f", borderColor: "#389e7f" }}
+                  >
+                    Add Routing Step
+                  </Button>}
+                </>
+              ),
+            }]}
+          />
+        )}
+        {isMobile && mobileAddButton("Add Routing", "#faad14", () => { setShowRouting(true); setRoutingRows(prev => [...prev, newRoutingRow()]); })}
 
         {/* ── Scrap / By-products ── */}
         {showScrap && (
@@ -516,19 +601,20 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
                     style={{ border: "1px solid #e8e8e8", borderRadius: 8 }}
                     onHeaderRow={() => ({ style: tableHeaderStyle })}
                   />
-                  <Button
+                  {!isMobile && <Button
                     type="dashed"
                     icon={<PlusOutlined />}
                     onClick={() => setScrapRows(prev => [...prev, newScrapRow()])}
                     style={{ marginTop: 12, color: "#389e7f", borderColor: "#389e7f" }}
                   >
                     Add Scrap/By-product Row
-                  </Button>
+                  </Button>}
                 </>
               ),
             }]}
           />
         )}
+        {isMobile && mobileAddButton("Add Scraps/By-products", "#1890ff", () => { setShowScrap(true); setScrapRows(prev => [...prev, newScrapRow()]); })}
 
         {/* ── Other Charges ── */}
         <Collapse
@@ -553,7 +639,7 @@ export default function CreateBomModal({ open, onClose, onSuccess }: Props) {
         />
 
         {/* ── Footer Buttons ── */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 12, borderTop: "1px solid #f0f0f0", paddingTop: 16 }}>
           <Button
             icon={<SaveOutlined />}
             onClick={() => handleSave(true)}

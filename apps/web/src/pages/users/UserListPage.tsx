@@ -212,7 +212,7 @@ export default function UserListPage() {
 
   return (
     <div style={{ padding: '0px 0px 32px 0px', maxWidth: '100%', overflowX: 'hidden' }}>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
         <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#262626' }}>Users & Permissions</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
             Add User

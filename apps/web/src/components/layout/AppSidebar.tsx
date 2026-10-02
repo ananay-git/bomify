@@ -47,10 +47,24 @@ const navGroups = [
     }
 ];
 
+// All known nav paths, used to resolve prefix collisions (e.g. /app/inventory vs /app/inventory/dashboard).
+const allNavPaths = [
+    ...navGroups.flatMap(g => g.items.map(i => i.path)),
+    "/app/copilot",
+    "/app/users",
+    "/app/settings",
+];
+
 const AppSidebar = () => {
-    const { collapsed, setCollapsed } = useSidebar();
+    const { collapsed: collapsedRaw, setCollapsed, isMobile, mobileOpen, setMobileOpen } = useSidebar();
+    // On mobile the sidebar is an off-canvas drawer, always shown expanded.
+    const collapsed = isMobile ? false : collapsedRaw;
     const location = useLocation();
     const navigate = useNavigate();
+
+    const closeOnMobileNav = () => {
+        if (isMobile) setMobileOpen(false);
+    };
 
     const [modules, setModules] = useState<Record<string, any> | null>(null);
 
@@ -68,7 +82,15 @@ const AppSidebar = () => {
         if (path === "/app/home") {
             return location.pathname === "/app/home" || location.pathname === "/app";
         }
-        return location.pathname.startsWith(path);
+        if (location.pathname === path) return true;
+        // Prefix match, but only if no other (more specific) nav path matches better
+        // e.g. "/app/inventory/dashboard" must win over "/app/inventory" for its own route.
+        if (!location.pathname.startsWith(path + "/")) return false;
+        const moreSpecificMatch = allNavPaths.some(
+            (p) => p !== path && p.length > path.length && p.startsWith(path) &&
+                (location.pathname === p || location.pathname.startsWith(p + "/"))
+        );
+        return !moreSpecificMatch;
     };
 
     const visibleGroups = navGroups.map(group => {
@@ -89,15 +111,17 @@ const AppSidebar = () => {
 
     return (
         <aside
-            className={`fixed left-0 top-0 z-40 flex h-screen flex-col transition-all duration-300 ease-in-out ${
-                collapsed ? "w-20" : "w-64"
+            className={`fixed left-0 top-0 flex h-screen flex-col transition-all duration-300 ease-in-out ${
+                isMobile ? "w-64" : collapsed ? "w-20" : "w-64"
             }`}
             style={{ 
                 background: '#0F172A', 
                 borderRight: '1px solid rgba(51, 65, 85, 0.5)',
                 borderRadius: '0 10px 10px 0',
                 boxShadow: '4px 0 24px rgba(0, 0, 0, 0.05)',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                zIndex: isMobile ? 50 : 40,
+                transform: isMobile ? (mobileOpen ? 'translateX(0)' : 'translateX(-100%)') : 'translateX(0)',
             }}
         >
             {/* Header / Logo */}
@@ -145,6 +169,7 @@ const AppSidebar = () => {
                                     key={item.path}
                                     to={item.path}
                                     title={collapsed ? item.label : undefined}
+                                    onClick={closeOnMobileNav}
                                     style={{
                                         position: 'relative',
                                         display: 'flex',
@@ -221,6 +246,7 @@ const AppSidebar = () => {
                         <Link
                             to="/app/copilot"
                             title={collapsed ? "AI Copilot" : undefined}
+                            onClick={closeOnMobileNav}
                             style={{
                                 position: 'relative',
                                 display: 'flex',
@@ -291,6 +317,7 @@ const AppSidebar = () => {
                 {/* Users & Team */}
                 {hasModule("users") && <Link
                     to="/app/users"
+                    onClick={closeOnMobileNav}
                     style={{
                         position: 'relative',
                         display: 'flex',
@@ -337,6 +364,7 @@ const AppSidebar = () => {
                 {/* Settings */}
                 {hasModule("settings") && <Link
                     to="/app/settings"
+                    onClick={closeOnMobileNav}
                     style={{
                         position: 'relative',
                         display: 'flex',
@@ -413,7 +441,7 @@ const AppSidebar = () => {
                 </button>
 
                 {/* Collapse Toggle */}
-                <button
+                {!isMobile && <button
                     onClick={() => setCollapsed(!collapsed)}
                     style={{
                         display: 'flex',
@@ -451,7 +479,7 @@ const AppSidebar = () => {
                             <span style={{ whiteSpace: 'nowrap' }}>Collapse</span>
                         </>
                     )}
-                </button>
+                </button>}
             </div>
 
             {/* Premium scrollbar styles */}

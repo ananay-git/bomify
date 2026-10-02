@@ -330,14 +330,14 @@ export default function CreateSalesOrderPage() {
     return (
         <div style={{ maxWidth: '1536px', width: '100%', margin: '0 auto', paddingBottom: '40px' }}>
             {/* Header */}
-            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex justify-between items-center mt-2 shadow-sm">
+            <div className="bg-[#001529] text-white p-3 px-6 rounded-t-lg flex flex-wrap justify-between items-center gap-3 mt-2 shadow-sm">
                 <Space size="middle">
                     <Button type="text" icon={<LeftOutlined />} onClick={() => navigate('/app/sales')} className="text-white hover:text-gray-200" />
                     <FormOutlined style={{ fontSize: '18px' }} />
                     <Title level={4} style={{ margin: 0, color: 'white' }}>Sales Order</Title>
                     <Tag color="blue" style={{ borderRadius: 12 }}>{nextOrderNumber}</Tag>
                 </Space>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                     <Select defaultValue="INR" style={{ width: 90 }} popupMatchSelectWidth={false}>
                         <Option value="INR">INR - ₹</Option><Option value="USD">USD - $</Option>
                     </Select>
@@ -351,9 +351,9 @@ export default function CreateSalesOrderPage() {
 
             <Form form={form} layout="vertical" className="bg-[#f4f7f8] p-6 rounded-b-lg border border-gray-200 border-t-0">
                 {/* Top Section */}
-                <Row gutter={24}>
+                <Row gutter={[24, 24]}>
                     {/* Buyer Selection Card */}
-                    <Col span={8}>
+                    <Col xs={24} md={8}>
                         <Card size="small" className="border border-gray-200 shadow-sm rounded-xl overflow-hidden bg-white h-full"
                             title={<div className="text-slate-700 font-semibold text-[13px] uppercase tracking-wide">Buyer Details</div>}
                             styles={{ header: { backgroundColor: '#fcfcfd', borderBottom: '1px solid #f1f5f9', padding: '12px 16px', minHeight: 'auto' }, body: { padding: '16px' } }}>
@@ -382,7 +382,7 @@ export default function CreateSalesOrderPage() {
                     </Col>
 
                     {/* Shipping Address Card */}
-                    <Col span={8}>
+                    <Col xs={24} md={8}>
                         <Card size="small" className="border border-gray-200 shadow-sm rounded-xl overflow-hidden bg-white h-full"
                             title={<div className="text-slate-700 font-semibold text-[13px] uppercase tracking-wide">Shipping Details</div>}
                             styles={{ header: { backgroundColor: '#fcfcfd', borderBottom: '1px solid #f1f5f9', padding: '12px 16px', minHeight: 'auto' }, body: { padding: '16px' } }}>
@@ -409,7 +409,7 @@ export default function CreateSalesOrderPage() {
                     </Col>
 
                     {/* Document Details Card */}
-                    <Col span={8}>
+                    <Col xs={24} md={8}>
                         <Card size="small" className="border border-blue-100 shadow-[0_4px_12px_rgba(37,99,235,0.06)] rounded-xl bg-gradient-to-b from-white to-[#f8fafc] h-full overflow-hidden"
                             title={<div className="text-blue-700 font-semibold text-[13px] uppercase tracking-wide">Document Details</div>}
                             styles={{ header: { backgroundColor: '#f0f4f8', borderBottom: '1px solid #e2e8f0', padding: '12px 16px', minHeight: 'auto' }, body: { padding: '16px 20px' } }}>
@@ -452,7 +452,7 @@ export default function CreateSalesOrderPage() {
 
                 {/* Items Table Section */}
                 <div className="px-4">
-                    <div className="mb-4 flex justify-between items-center">
+                    <div className="mb-4 flex flex-wrap justify-between items-center gap-3">
                         <Space>
                             <Button icon={<DownloadOutlined />}>Download Template</Button>
                             <Button icon={<UploadOutlined />}>Bulk Upload</Button>
@@ -478,15 +478,15 @@ export default function CreateSalesOrderPage() {
                     <Button type="primary" onClick={handleAddItem} className="mb-8" style={{ marginLeft: 0 }}>+ ADD ITEM</Button>
 
                     {/* Bottom Section: Tabs & Summary */}
-                    <Row gutter={32}>
-                        <Col span={14}>
+                    <Row gutter={[32, 24]}>
+                        <Col xs={24} lg={14}>
                             <DocumentTabsSection
                                 mode="create"
                                 value={documentTabsData}
                                 onChange={setDocumentTabsData}
                             />
                         </Col>
-                        <Col span={10}>
+                        <Col xs={24} lg={10}>
                             <div className="p-4 rounded-md">
                                 {calculations.totalDiscount > 0 && (
                                     <div className="flex justify-between mb-2">
@@ -518,7 +518,7 @@ export default function CreateSalesOrderPage() {
                     </Row>
 
                     {/* Action Buttons */}
-                    <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
+                    <div className="flex flex-wrap justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
                         <Button size="large" onClick={() => navigate('/app/sales')} className="px-8">CANCEL</Button>
                         <Button size="large" onClick={() => handleSave(true)} loading={loading} className="px-8">SAVE AS DRAFT</Button>
                         <Button size="large" type="primary" onClick={() => handleSave(false)} loading={loading} className="px-8"

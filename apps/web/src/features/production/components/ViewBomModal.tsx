@@ -231,6 +231,7 @@ export default function ViewBomModal({ bom, onClose, onSaved }: Props) {
             background: "#f0faf6", padding: "12px 24px",
             borderBottom: "1px solid #e8e8e8",
             display: "flex", justifyContent: "space-between", alignItems: "center",
+            flexWrap: "wrap", gap: 8,
           }}>
             <Tag style={{
               borderRadius: 16, background: statusCfg.bg,
@@ -266,7 +267,7 @@ export default function ViewBomModal({ bom, onClose, onSaved }: Props) {
           <div style={{ padding: "20px 24px 24px" }}>
             {/* ── BOM details ── */}
             <Descriptions
-              bordered size="small" column={2}
+              bordered size="small" column={{ xs: 1, sm: 2 }}
               style={{ marginBottom: 28 }}
               styles={{ label: { background: "#fafafa", fontWeight: 600, width: 160 } }}
             >

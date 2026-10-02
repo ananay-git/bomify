@@ -84,7 +84,7 @@ export default function InwardDetailPage() {
     return (
         <div style={{ padding: '0px 0px 32px 0px', maxWidth: '100%', overflowX: 'hidden' }}>
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
                 <Space size="middle" align="center">
                     <Button icon={<LeftOutlined />} onClick={() => navigate(`/app/purchases/${po.id}`)} type="text" style={{ fontSize: 16, color: '#262626' }} />
                     <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#262626' }}>{grn.grn_number}</Title>
@@ -191,7 +191,7 @@ export default function InwardDetailPage() {
                                     <td style={tdStyle}>
                                         <Text strong style={{ fontSize: 13 }}>{item.inv?.name || 'Item'}</Text>
                                         <br />
-                                        <span onClick={() => navigate(`/app/inventory/${item.item_id}`)} style={{ fontSize: 11, color: '#1677ff', cursor: 'pointer', textDecoration: 'underline' }}>Item ID: {item.inv?.sku || item.item_id}</span>
+                                        <span onClick={() => navigate('/app/inventory')} style={{ fontSize: 11, color: '#1677ff', cursor: 'pointer', textDecoration: 'underline' }}>Item ID: {item.inv?.sku || item.item_id}</span>
                                     </td>
                                     <td style={tdStyle}>{Number(item.orderedQty).toFixed(2)} {item.inv?.unit_of_measure || 'Kg'}</td>
                                     <td style={tdStyle}>{Number(item.deliveredEarlier).toFixed(2)} {item.inv?.unit_of_measure || 'Kg'}</td>
