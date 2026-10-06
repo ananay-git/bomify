@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Table, Button, Typography, Tag, Space, Input, Select, Tabs, Tooltip, Popconfirm, message } from "antd";
 import {
   PlusOutlined, SearchOutlined, ArrowUpOutlined, ArrowDownOutlined,
-  CaretRightOutlined, DeleteOutlined, InfoCircleOutlined, SettingOutlined, CheckCircleOutlined, TruckOutlined
+  CaretRightOutlined, DeleteOutlined, InfoCircleOutlined, SettingOutlined, CheckCircleOutlined, TruckOutlined,
+  SendOutlined, UndoOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,6 +14,9 @@ import CreateBomModal from "@/features/production/components/CreateBomModal";
 import CreateWorkOrderModal from "@/features/production/components/CreateWorkOrderModal";
 import ViewBomModal from "@/features/production/components/ViewBomModal";
 import CompleteProcessModal from "@/features/production/components/CompleteProcessModal";
+import AssignToStaffModal from "@/features/tasks/components/AssignToStaffModal";
+import { taskApi } from "@/features/tasks/api";
+import type { StaffTask } from "@/features/tasks/api";
 import { extractApiError } from "@/lib/errors";
 
 const { Title, Text } = Typography;
@@ -245,6 +249,9 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
   const [stageFilter, setStageFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
+  // Orders already sent to staff, keyed by work order id
+  const [staffTasks, setStaffTasks] = useState<Record<number, StaffTask>>({});
+  const [assignTarget, setAssignTarget] = useState<WorkOrder | null>(null);
 
   const fetch = async () => {
     setLoading(true);
@@ -254,6 +261,17 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
       const res = await workOrderApi.list(params);
       setData(res.orders);
     } catch { /* empty */ } finally { setLoading(false); }
+
+    try {
+      const res = await taskApi.list();
+      const byWorkOrder: Record<number, StaffTask> = {};
+      for (const task of res.tasks) {
+        if (task.work_order_id != null && !byWorkOrder[task.work_order_id]) {
+          byWorkOrder[task.work_order_id] = task; // list is newest first
+        }
+      }
+      setStaffTasks(byWorkOrder);
+    } catch { /* the staff column is optional — the rest of the page still works */ }
   };
 
   useEffect(() => { fetch(); }, [stageFilter, refreshTick, localRefresh]);
@@ -281,6 +299,22 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
     }
   };
 
+  const withdrawFromStaff = async (taskId: number) => {
+    try {
+      await taskApi.cancel(taskId);
+      message.success("Order withdrawn from staff");
+      fetch();
+    } catch (err) {
+      message.error(extractApiError(err, "Could not withdraw this order"));
+    }
+  };
+
+  const staffTag = (task?: StaffTask) => {
+    if (task?.status === "assigned") return <Tag color="blue">With staff</Tag>;
+    if (task?.status === "ready_for_dispatch") return <Tag color="green">Ready for dispatch</Tag>;
+    return "-";
+  };
+
   const columns = [
     { title: col("Item ID"), dataIndex: "item_sku", key: "item_sku", render: (v: string) => v || "-" },
     { title: col("Item Name"), dataIndex: "item_name", key: "item_name", render: (v: string) => <Text style={{ fontWeight: 500 }}>{v || "-"}</Text> },
@@ -295,20 +329,39 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
     { title: col("Document Date"), key: "document_date", render: (_: unknown, r: WorkOrder) => fmtDate(r.document_date) },
     { title: col("Delivery Date"), key: "delivery_date", render: (_: unknown, r: WorkOrder) => fmtDate(r.delivery_date) },
     { title: col("Created By"), dataIndex: "created_by", key: "created_by", render: (v: string) => v || "-" },
+    { title: col("Staff"), key: "staff", render: (_: unknown, r: WorkOrder) => staffTag(staffTasks[r.id]) },
     {
-      title: "Actions", key: "actions", fixed: "right" as const, width: 100,
-      render: (_: unknown, r: WorkOrder) => (
+      title: "Actions", key: "actions", fixed: "right" as const, width: 150,
+      render: (_: unknown, r: WorkOrder) => {
+        const task = staffTasks[r.id];
+        const withStaff = task?.status === "assigned";
+        const sentToStaff = withStaff || task?.status === "ready_for_dispatch";
+        const canAssign = (r.process_stage === "open" || r.process_stage === "in_progress") && !sentToStaff;
+        return (
         <Space>
           {r.process_stage === "open" && (
             <Tooltip title="Start Production Process">
               <Button type="text" icon={<CaretRightOutlined style={{ color: "#52c41a" }} />} onClick={() => startProcess(r.id)} />
             </Tooltip>
           )}
+          {canAssign && (
+            <Tooltip title="Assign to staff">
+              <Button type="text" icon={<SendOutlined style={{ color: "#1677ff" }} />} onClick={() => setAssignTarget(r)} />
+            </Tooltip>
+          )}
+          {withStaff && task && (
+            <Popconfirm title="Withdraw this order from staff?" onConfirm={() => withdrawFromStaff(task.id)}>
+              <Tooltip title="Withdraw from staff">
+                <Button type="text" icon={<UndoOutlined style={{ color: "#fa8c16" }} />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
           <Popconfirm title="Delete this work order?" onConfirm={() => deleteWO(r.id)}>
             <Button type="text" icon={<DeleteOutlined style={{ color: "#ff4d4f" }} />} />
           </Popconfirm>
         </Space>
-      ),
+        );
+      },
     },
   ];
 
@@ -358,6 +411,11 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
       </div>
 
       <CreateWorkOrderModal open={createOpen} onClose={() => setCreateOpen(false)} onSuccess={() => setLocalRefresh(t => t + 1)} />
+      <AssignToStaffModal
+        workOrder={assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onSuccess={() => { setLocalRefresh(t => t + 1); onProcessCreated(); }}
+      />
     </>
   );
 }

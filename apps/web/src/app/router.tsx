@@ -1,10 +1,13 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
+import StaffLayout from "@/components/layout/StaffLayout";
+import StaffDashboardPage from "@/pages/staff/StaffDashboardPage";
 import AccessDenied from "@/components/feedback/AccessDenied";
 import LoginPage from "@/pages/auth/LoginPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import UserListPage from "@/pages/users/UserListPage";
-import { isAuthenticated, hasModule } from "@/app/store";
+import { isAuthenticated, hasModule, getUser, homePathFor } from "@/app/store";
+import type { UserRole } from "@/app/store";
 import CompanyListPage from "@/pages/companies/CompanyListPage";
 
 // 1. Import your new Detail View (Already there)
@@ -43,9 +46,23 @@ import CustomerListPage from "@/pages/selling/CustomerListPage";
 import SupplierListPage from "@/pages/buying/SupplierListPage";
 
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    if (!isAuthenticated()) {
+/**
+ * Keeps signed-out visitors on the login page, and keeps each kind of account in
+ * its own area: staff are sent to their dashboard, owners to the main app.
+ */
+function ProtectedRoute({
+    children,
+    role,
+}: {
+    children: React.ReactNode;
+    role: UserRole;
+}) {
+    const user = getUser();
+    if (!isAuthenticated() || !user) {
         return <Navigate to="/login" replace />;
+    }
+    if (user.role !== role) {
+        return <Navigate to={homePathFor(user)} replace />;
     }
     return <>{children}</>;
 }
@@ -70,7 +87,7 @@ export default function AppRouter() {
             <Route
                 path="/"
                 element={
-                    <ProtectedRoute>
+                    <ProtectedRoute role="owner">
                         <AppLayout />
                     </ProtectedRoute>
                 }
@@ -151,6 +168,19 @@ export default function AppRouter() {
                 />
 
             </Route>
+
+            {/* Staff: one shared task dashboard, nothing else */}
+            <Route
+                path="/staff"
+                element={
+                    <ProtectedRoute role="staff">
+                        <StaffLayout />
+                    </ProtectedRoute>
+                }
+            >
+                <Route index element={<StaffDashboardPage />} />
+            </Route>
+
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );

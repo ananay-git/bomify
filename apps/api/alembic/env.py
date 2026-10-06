@@ -22,6 +22,8 @@ from app.modules.production.models import (  # noqa: F401
 from app.modules.dispatch.models import Dispatch # noqa: F401
 from app.modules.copilot.models import CopilotThread, CopilotChart # noqa: F401
 from app.modules.settings.models import Setting # noqa: F401
+from app.modules.notifications.models import Notification # noqa: F401
+from app.modules.tasks.models import StaffTask # noqa: F401
 
 config = context.config
 

@@ -24,6 +24,13 @@ class Module(str, enum.Enum):
     SETTINGS = "settings"
 
 
+class UserRole(str, enum.Enum):
+    """Who the account belongs to. Owners see everything; staff only see their task dashboard."""
+
+    OWNER = "owner"
+    STAFF = "staff"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -37,6 +44,18 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(
+            UserRole,
+            native_enum=False,
+            length=20,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=UserRole.OWNER,
+        server_default=UserRole.OWNER.value,
+        nullable=False,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -60,6 +79,14 @@ class User(Base):
     @property
     def module_permissions(self) -> list[Module]:
         return self.modules
+
+    @property
+    def is_owner(self) -> bool:
+        return self.role == UserRole.OWNER
+
+    @property
+    def is_staff(self) -> bool:
+        return self.role == UserRole.STAFF
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"

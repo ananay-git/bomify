@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.modules.users.models import Module
+from app.modules.users.models import Module, UserRole
 
 
 # ---------------------------------------------------------------------------
@@ -19,6 +19,9 @@ from app.modules.users.models import Module
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6)
+    # Optional: which login screen was used ("owner" or "staff"). When given, the
+    # account must match it, so staff can't sign in through the owner login (and vice versa).
+    login_as: UserRole | None = None
 
 
 class TokenResponse(BaseModel):
@@ -36,6 +39,8 @@ class UserCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=6)
+    role: UserRole = UserRole.OWNER
+    # Ignored for staff accounts — staff only get the task dashboard.
     module_permissions: list[Module] = []
 
 
@@ -56,6 +61,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     is_active: bool
+    role: UserRole
     module_permissions: list[Module]
     created_at: datetime
     updated_at: datetime

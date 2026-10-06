@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import decode_access_token
-from app.modules.users.models import Module, User
+from app.modules.users.models import Module, User, UserRole
 from app.modules.users.services import get_user_by_id
 
 
@@ -51,6 +51,13 @@ def require_module(module: Module):
 
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """Dependency that requires the user to have the USERS module (admin-level access)."""
-    if Module.USERS not in current_user.modules:
+    if current_user.role != UserRole.OWNER or Module.USERS not in current_user.modules:
         raise ForbiddenError(detail="Admin access required")
+    return current_user
+
+
+async def require_owner(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that only lets owner accounts through (staff are turned away)."""
+    if current_user.role != UserRole.OWNER:
+        raise ForbiddenError(detail="This area is only available to the owner")
     return current_user

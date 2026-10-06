@@ -5,23 +5,46 @@ Business logic for the Users / Auth module.
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
+from app.core.exceptions import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from app.core.security import hash_password, verify_password
-from app.modules.users.models import Module, User, UserModuleAccess
+from app.modules.users.models import Module, User, UserModuleAccess, UserRole
 from app.modules.users.schemas import UserCreate, UserUpdate
 
 # Modules automatically granted to every user
 _AUTO_GRANT = {Module.DASHBOARD, Module.PARTIES}
 
 
-async def authenticate_user(db: AsyncSession, username: str, password: str) -> User:
-    """Verify credentials and return the user, or raise UnauthorizedError."""
+async def authenticate_user(
+    db: AsyncSession,
+    username: str,
+    password: str,
+    login_as: UserRole | None = None,
+) -> User:
+    """Verify credentials and return the user, or raise UnauthorizedError.
+
+    If ``login_as`` is given, the account's role must match the login screen used.
+    """
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
     if not user or not verify_password(password, user.hashed_password):
         raise UnauthorizedError(detail="Incorrect username or password")
     if not user.is_active:
         raise UnauthorizedError(detail="Account is deactivated")
+    if login_as is not None and user.role != login_as:
+        # Right password, wrong door: 403 (not 401) so the web app shows the message
+        # instead of treating it as an expired session.
+        if user.role == UserRole.STAFF:
+            raise ForbiddenError(
+                detail="This is a staff account. Please use the Staff login."
+            )
+        raise ForbiddenError(
+            detail="This is an owner account. Please use the Owner login."
+        )
     return user
 
 
@@ -40,13 +63,16 @@ async def create_user(db: AsyncSession, data: UserCreate) -> User:
         email=data.email,
         full_name=data.full_name,
         hashed_password=hash_password(data.password),
+        role=data.role,
     )
     db.add(user)
     await db.flush()  # assigns user.id
 
-    all_modules = set(data.module_permissions) | _AUTO_GRANT
-    for mod in all_modules:
-        db.add(UserModuleAccess(user_id=user.id, module=mod))
+    # Staff never get owner modules — they only see the task dashboard.
+    if data.role == UserRole.OWNER:
+        all_modules = set(data.module_permissions) | _AUTO_GRANT
+        for mod in all_modules:
+            db.add(UserModuleAccess(user_id=user.id, module=mod))
 
     await db.flush()
     await db.refresh(user)
@@ -81,7 +107,7 @@ async def update_user(db: AsyncSession, user_id: int, data: UserUpdate) -> User:
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    if new_modules is not None:
+    if new_modules is not None and user.role == UserRole.OWNER:
         await db.execute(
             delete(UserModuleAccess).where(UserModuleAccess.user_id == user_id)
         )

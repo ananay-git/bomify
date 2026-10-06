@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Table, Button, Tag, Modal, Form, Input, Typography, Space, Drawer, Switch, Dropdown, Checkbox } from 'antd';
+import { Table, Button, Tag, Modal, Form, Input, Typography, Space, Drawer, Switch, Dropdown, Checkbox, Radio } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { PlusOutlined, DeleteOutlined, EditOutlined, LockOutlined, MoreOutlined, SearchOutlined, ArrowUpOutlined, ArrowDownOutlined } from "@ant-design/icons";
 import { fetchUsers, createUser, updateUser, resetUserPassword, deleteUser } from "@/features/users";
@@ -32,6 +32,7 @@ export default function UserListPage() {
   // Modals & Drawers
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm] = Form.useForm();
+  const createRole = Form.useWatch("role", createForm) as "owner" | "staff" | undefined;
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editForm] = Form.useForm();
   const [resetTarget, setResetTarget] = useState<User | null>(null);
@@ -171,10 +172,21 @@ export default function UserListPage() {
     { title: renderColumnTitle("Full Name"), dataIndex: "full_name", key: "full_name" },
     { title: renderColumnTitle("Email"), dataIndex: "email", key: "email" },
     {
+      title: renderColumnTitle("Account", false),
+      dataIndex: "role",
+      key: "role",
+      render: (role: User["role"]) =>
+        role === "staff" ? <Tag color="green">Staff</Tag> : <Tag color="blue">Owner</Tag>,
+    },
+    {
       title: renderColumnTitle("Modules", false),
       dataIndex: "module_permissions",
       key: "module_permissions",
-      render: (modules: string[]) => (
+      render: (modules: string[], record: User) => record.role === "staff" ? (
+        <Tag style={{ borderRadius: '12px', fontSize: '11px', padding: '1px 8px', background: '#f6ffed', border: '1px solid #b7eb8f', color: '#389e0d' }}>
+          Task dashboard only
+        </Tag>
+      ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {modules.map(m => {
             const label = MODULE_OPTIONS.find(o => o.value === m)?.label ?? m;
@@ -250,17 +262,41 @@ export default function UserListPage() {
 
       <Modal title="Create New User" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => createForm.submit()} okText="Create" destroyOnHidden>
         <Form form={createForm} layout="vertical" onFinish={handleCreate} preserve={false}>
+          <Form.Item name="role" label="Account type" initialValue="owner">
+            <Radio.Group
+              optionType="button"
+              buttonStyle="solid"
+              options={[
+                { label: "Owner", value: "owner" },
+                { label: "Staff", value: "staff" },
+              ]}
+            />
+          </Form.Item>
           <Form.Item name="username" label="Username" rules={[{ required: true, min: 3 }]}><Input /></Form.Item>
           <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}><Input /></Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}><Input.Password /></Form.Item>
-          <Form.Item name="module_permissions" label="Module Access">
-            <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {MODULE_OPTIONS.map(opt => (
-                <Checkbox key={opt.value} value={opt.value}>{opt.label}</Checkbox>
-              ))}
-            </Checkbox.Group>
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[{ required: true, type: "email" }]}
+            extra={createRole === "staff" ? "Order notifications are emailed here." : undefined}
+          >
+            <Input />
           </Form.Item>
+          <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}><Input.Password /></Form.Item>
+          {createRole === "staff" ? (
+            <Text type="secondary" style={{ display: 'block' }}>
+              Staff only see the shared task dashboard. They get a browser notification and an email when you
+              assign an order, and they tell you when it is ready for dispatch.
+            </Text>
+          ) : (
+            <Form.Item name="module_permissions" label="Module Access">
+              <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {MODULE_OPTIONS.map(opt => (
+                  <Checkbox key={opt.value} value={opt.value}>{opt.label}</Checkbox>
+                ))}
+              </Checkbox.Group>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -269,13 +305,19 @@ export default function UserListPage() {
           <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}><Input /></Form.Item>
           <Form.Item name="is_active" label="Active" valuePropName="checked"><Switch /></Form.Item>
-          <Form.Item name="module_permissions" label="Module Access">
-            <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {MODULE_OPTIONS.map(opt => (
-                <Checkbox key={opt.value} value={opt.value}>{opt.label}</Checkbox>
-              ))}
-            </Checkbox.Group>
-          </Form.Item>
+          {editUser?.role === "staff" ? (
+            <Text type="secondary" style={{ display: 'block' }}>
+              Staff account: only sees the shared task dashboard.
+            </Text>
+          ) : (
+            <Form.Item name="module_permissions" label="Module Access">
+              <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {MODULE_OPTIONS.map(opt => (
+                  <Checkbox key={opt.value} value={opt.value}>{opt.label}</Checkbox>
+                ))}
+              </Checkbox.Group>
+            </Form.Item>
+          )}
         </Form>
       </Drawer>
 

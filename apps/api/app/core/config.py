@@ -48,6 +48,25 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "change-me-jwt"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # Staff leave the task dashboard open on a shop-floor screen all shift, so their
+    # sign-in lasts longer (default 12 hours) — otherwise alerts stop after an hour.
+    STAFF_ACCESS_TOKEN_EXPIRE_MINUTES: int = 720
+
+    # Public URL of the web app — used for links inside notification emails
+    APP_BASE_URL: str = "http://localhost:5173"
+
+    # -------------------------------------------------------
+    # Email notifications (SMTP)
+    # Leave SMTP_HOST empty to switch email off (in-app and browser
+    # notifications keep working).
+    # -------------------------------------------------------
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "QuadStack <no-reply@quadstack.local>"
+    SMTP_USE_TLS: bool = True   # STARTTLS (typical for port 587)
+    SMTP_USE_SSL: bool = False  # implicit TLS (typical for port 465)
 
     # Seed admin (used by app/seed.py on first startup)
     ADMIN_USERNAME: str = "admin"

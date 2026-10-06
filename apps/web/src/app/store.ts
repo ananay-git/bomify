@@ -3,11 +3,15 @@
  * Stores JWT token and user info in localStorage.
  */
 
+/** "owner" sees everything; "staff" only sees the shared task dashboard. */
+export type UserRole = "owner" | "staff";
+
 export interface AuthUser {
   id: number;
   username: string;
   email: string;
   full_name: string;
+  role: UserRole;
   module_permissions: string[];
 }
 
@@ -27,6 +31,10 @@ export function getUser(): AuthUser | null {
     if (!Array.isArray(user?.module_permissions)) {
       clearAuth();
       return null;
+    }
+    // Sessions saved before staff accounts existed always belonged to owners
+    if (user.role !== "owner" && user.role !== "staff") {
+      user.role = "owner";
     }
     return user;
   } catch {
@@ -52,4 +60,14 @@ export function isAuthenticated(): boolean {
 export function hasModule(module: string): boolean {
   const user = getUser();
   return !!user && Array.isArray(user.module_permissions) && user.module_permissions.includes(module);
+}
+
+/** True when the signed-in user is a staff member (task dashboard only). */
+export function isStaff(): boolean {
+  return getUser()?.role === "staff";
+}
+
+/** Where a user lands after signing in. */
+export function homePathFor(user: AuthUser | null): string {
+  return user?.role === "staff" ? "/staff" : "/app/home";
 }

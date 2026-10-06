@@ -25,6 +25,16 @@ services:
       timeout: 5s
       retries: 5
 
+  # Catches every email the app sends while you're developing — nothing leaves your
+  # machine. Open http://localhost:8025 to read them.
+  # To send real email instead, set SMTP_HOST / SMTP_PORT / SMTP_USERNAME /
+  # SMTP_PASSWORD (and SMTP_USE_TLS=true) in your .env file.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # web inbox
+      - "1025:1025"   # SMTP
+
   api:
     build: ./apps/api
     ports:
@@ -53,6 +63,15 @@ services:
       COPILOT_DB_USER: copilot_reader
       COPILOT_DB_PASSWORD: copilot_reader_pass
       COPILOT_CHARTS_DIR: /tmp/copilot_charts
+      # Notification emails (owner <-> staff). Defaults send to the local Mailpit inbox.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: "${SMTP_FROM:-QuadStack <no-reply@quadstack.local>}"
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
     # Override CMD to seed then start with hot reload
     command: sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     depends_on:

@@ -14,7 +14,7 @@ from sqlalchemy import select, text
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.security import hash_password
-from app.modules.users.models import Module, User, UserModuleAccess
+from app.modules.users.models import Module, User, UserModuleAccess, UserRole
 
 # Import all models so they are registered with SQLAlchemy metadata
 from app.modules.parties.models import Party  # noqa: F401
@@ -27,6 +27,8 @@ from app.modules.production.models import (  # noqa: F401
 from app.modules.dispatch.models import Dispatch  # noqa: F401
 from app.modules.copilot.models import CopilotThread, CopilotChart  # noqa: F401
 from app.modules.settings.models import Setting  # noqa: F401
+from app.modules.notifications.models import Notification  # noqa: F401
+from app.modules.tasks.models import StaffTask  # noqa: F401
 from app.modules.settings.services import seed_default_settings
 
 
@@ -116,6 +118,7 @@ async def seed_admin() -> None:
             full_name=settings.ADMIN_FULL_NAME,
             hashed_password=hash_password(settings.ADMIN_PASSWORD),
             is_active=True,
+            role=UserRole.OWNER,
         )
         session.add(admin)
         await session.flush()  # assigns admin.id

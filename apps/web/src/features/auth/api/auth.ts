@@ -8,6 +8,8 @@ import type { AuthUser } from "@/app/store";
 interface LoginPayload {
   username: string;
   password: string;
+  /** Which login screen was used — the account must match it. */
+  login_as?: "owner" | "staff";
 }
 
 interface TokenResponse {

@@ -13,6 +13,8 @@ import app.modules.production.models
 import app.modules.dispatch.models
 import app.modules.copilot.models
 import app.modules.settings.models
+import app.modules.notifications.models
+import app.modules.tasks.models
 
 def create():
     engine = create_engine(settings.DATABASE_URL_SYNC)

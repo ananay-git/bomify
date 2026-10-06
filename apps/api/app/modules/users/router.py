@@ -2,13 +2,16 @@
 API endpoints for authentication and user management.
 """
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.modules.users.dependencies import get_current_user, require_admin
-from app.modules.users.models import User
+from app.modules.users.models import User, UserRole
 from app.modules.users.schemas import (
     LoginRequest,
     PasswordReset,
@@ -31,8 +34,15 @@ router = APIRouter(prefix="/users", tags=["Users & Auth"])
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate with username + password, returns a JWT."""
-    user = await services.authenticate_user(db, body.username, body.password)
-    token = create_access_token(data={"sub": str(user.id)})
+    user = await services.authenticate_user(
+        db, body.username, body.password, login_as=body.login_as
+    )
+    expires = (
+        timedelta(minutes=settings.STAFF_ACCESS_TOKEN_EXPIRE_MINUTES)
+        if user.role == UserRole.STAFF
+        else None  # owners use the default lifetime
+    )
+    token = create_access_token(data={"sub": str(user.id)}, expires_delta=expires)
     return TokenResponse(access_token=token)
 
 

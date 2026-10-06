@@ -4,29 +4,51 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Form, Input, Button, Typography } from 'antd';
+import { Card, Form, Input, Button, Typography, Segmented } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
 import { loginApi, fetchCurrentUser } from "@/features/auth";
-import { setAuth } from "@/app/store";
+import { setAuth, homePathFor } from "@/app/store";
 import { extractApiError } from "@/lib/errors";
 
 const { Title, Text } = Typography;
 
+type LoginMode = "owner" | "staff";
+const MODE_KEY = "qs_login_mode";
+
+/** Shop-floor screens stay on the Staff tab: remember the last one used on this device. */
+function savedMode(): LoginMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === "staff" ? "staff" : "owner";
+  } catch {
+    return "owner";
+  }
+}
+
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<LoginMode>(savedMode);
   const navigate = useNavigate();
+
+  const changeMode = (next: LoginMode) => {
+    setMode(next);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* private browsing — the tab still works, it just isn't remembered */
+    }
+  };
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
-      const { access_token } = await loginApi(values);
+      const { access_token } = await loginApi({ ...values, login_as: mode });
       // Temporarily store token to make the /me call
       localStorage.setItem("qs_token", access_token);
       const user = await fetchCurrentUser();
       setAuth(access_token, user);
       message.success(`Welcome, ${user.full_name}`);
-      navigate("/app/home");
+      navigate(homePathFor(user));
     } catch (err: unknown) {
       message.error(extractApiError(err, "Login failed"));
     } finally {
@@ -50,8 +72,21 @@ export default function LoginPage() {
           <Title level={3} style={{ marginBottom: 4 }}>
             QuadStack
           </Title>
-          <Text type="secondary">Sign in to your account</Text>
+          <Text type="secondary">
+            {mode === "staff" ? "Sign in to see your orders" : "Sign in to your account"}
+          </Text>
         </div>
+
+        <Segmented<LoginMode>
+          block
+          value={mode}
+          onChange={changeMode}
+          options={[
+            { label: "Owner", value: "owner" },
+            { label: "Staff", value: "staff" },
+          ]}
+          style={{ marginBottom: 20 }}
+        />
 
         <Form layout="vertical" onFinish={onFinish} autoComplete="off">
           <Form.Item
@@ -86,7 +121,7 @@ export default function LoginPage() {
               block
               size="large"
             >
-              Login
+              {mode === "staff" ? "Log in as staff" : "Log in as owner"}
             </Button>
           </Form.Item>
         </Form>

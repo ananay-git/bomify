@@ -9,6 +9,8 @@ export interface User {
   username: string;
   email: string;
   full_name: string;
+  /** "owner" sees everything; "staff" only gets the task dashboard. */
+  role: "owner" | "staff";
   module_permissions: string[];
   is_active: boolean;
   created_at: string;
@@ -25,7 +27,9 @@ export interface CreateUserPayload {
   email: string;
   full_name: string;
   password: string;
-  module_permissions: string[];
+  role?: "owner" | "staff";
+  /** Ignored for staff accounts. */
+  module_permissions?: string[];
 }
 
 export interface UpdateUserPayload {

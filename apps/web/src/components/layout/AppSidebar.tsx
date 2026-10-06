@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import { useSidebar } from "@/hooks/use-sidebar-state";
 import { clearAuth, hasModule } from "@/app/store";
 import { settingsApi } from "@/features/settings/api";
+import NotificationBell from "@/features/notifications/components/NotificationBell";
 
 const navGroups = [
     {
@@ -314,6 +315,9 @@ const AppSidebar = () => {
                 borderTop: '1px solid rgba(51, 65, 85, 0.4)',
                 background: '#0F172A',
             }}>
+                {/* Notifications (new staff updates, orders ready to dispatch) */}
+                <NotificationBell variant="sidebar" collapsed={collapsed} />
+
                 {/* Users & Team */}
                 {hasModule("users") && <Link
                     to="/app/users"
