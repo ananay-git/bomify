@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Form, Input, Button, DatePicker, Select, Typography, Table, Space, Divider, Row, Col, Tabs, InputNumber, message, Tag, Card } from "antd";
+import React, { useState, useEffect, useMemo } from "react";
+import { Form, Input, Button, DatePicker, Select, Typography, Table, Space, Divider, Row, Col, InputNumber, message, Tag, Card } from "antd";
 import { PlusOutlined, DeleteOutlined, DownloadOutlined, UploadOutlined, LeftOutlined, CloseOutlined, SettingOutlined, EditOutlined } from "@ant-design/icons";
 import DocumentTabsSection, { EMPTY_TABS_DATA, DocumentTabsData } from '@/components/shared/DocumentTabsSection';
 import { useNavigate, useLocation } from "react-router-dom";
@@ -265,7 +265,7 @@ export default function CreateOrderConfirmationPage() {
             title: "Units",
             dataIndex: "units",
             width: "8%",
-            render: (text: string) => (
+            render: () => (
                 <Select defaultValue="Unit" style={{ width: '100%' }}>
                     <Option value="Unit">Unit</Option>
                     <Option value="Kg">Kg</Option>

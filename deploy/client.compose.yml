@@ -1,0 +1,89 @@
+# One isolated stack per client (own Postgres, Redis, API and web).
+# Never run this directly; use deploy/new-client.sh and deploy/update-all.sh.
+# Images (bomify-api, bomify-web) are built once by deploy/build-images.sh.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 300m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: bomify-api:latest
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 600m
+    environment:
+      WEB_CONCURRENCY: ${API_WORKERS:-1}
+      CLIENT_NAME: ${CLIENT_NAME}
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_FULL_NAME: System Administrator
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      COPILOT_AGENT_MODEL: ${COPILOT_AGENT_MODEL:-qwen/qwen3-32b}
+      COPILOT_DB_USER: copilot_reader
+      COPILOT_DB_PASSWORD: ${COPILOT_DB_PASSWORD}
+      COPILOT_CHARTS_DIR: /data/copilot_charts
+    volumes:
+      - copilot_charts:/data/copilot_charts
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: bomify-web:latest
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 64m
+    depends_on:
+      - api
+    networks:
+      default: {}
+      # The shared Caddy reaches this client through a unique alias
+      edge:
+        aliases:
+          - ${CLIENT_ID}-web
+
+volumes:
+  pgdata:
+  copilot_charts:
+
+networks:
+  edge:
+    external: true
+    name: edge

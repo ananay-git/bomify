@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Form, Input, DatePicker, Select, Button, Table, Typography, Row, Col, Space, Divider, Tabs, Spin } from 'antd';
+import { Card, Form, Input, DatePicker, Select, Button, Table, Typography, Row, Col, Space, Divider, Spin } from 'antd';
 import { message } from '@/lib/antdHelper';
 import {
     LeftOutlined, UploadOutlined, EditOutlined, InboxOutlined,
@@ -11,11 +11,11 @@ import { purchasesApi, PurchaseOrder } from '@/features/purchases/api';
 import { inventoryApi, InventoryItem } from '@/features/inventory/api';
 import { fetchPartyById, Party } from '@/features/parties/api/parties';
 import { getUser } from '@/app/store';
+import { extractApiError } from '@/lib/errors';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 
 const { Title, Text } = Typography;
-const { TextArea } = Input;
 
 export default function CreateInwardPage() {
     const { id } = useParams<{ id: string }>();
@@ -28,7 +28,7 @@ export default function CreateInwardPage() {
     const [saving, setSaving] = useState(false);
     const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
     const [supplier, setSupplier] = useState<Party | null>(null);
-    const [comment, setComment] = useState('');
+    const [comment] = useState('');
     const [deliveryDate, setDeliveryDate] = useState<dayjs.Dayjs>(dayjs());
     const [showOptionalFields, setShowOptionalFields] = useState(false);
     const [selectedOptionalColumns, setSelectedOptionalColumns] = useState<string[]>([]);
@@ -48,10 +48,10 @@ export default function CreateInwardPage() {
                 setPo(poData);
                 setInventoryItems(invData.items);
 
-                // Initialize delivered now values = ordered quantity (full delivery by default)
+                // Default "delivered now" to what is still outstanding on each line
                 const initValues: Record<number, number> = {};
                 poData.items.forEach(item => {
-                    initValues[item.item_id] = item.ordered_quantity;
+                    initValues[item.item_id] = Math.max(0, item.ordered_quantity - item.received_quantity);
                 });
                 setDeliveredNowValues(initValues);
 
@@ -113,7 +113,7 @@ export default function CreateInwardPage() {
             }
         } catch (err) {
             console.error(err);
-            message.error('Failed to create inward document');
+            message.error(extractApiError(err, 'Failed to create inward document'));
         } finally {
             setSaving(false);
         }

@@ -73,6 +73,7 @@ def _serialize_dispatch(dispatch) -> dict:
         "id": dispatch.id,
         "dispatch_number": dispatch.dispatch_number,
         "sales_order_id": dispatch.sales_order_id,
+        "production_process_id": dispatch.production_process_id,
         "status": dispatch.status.value if hasattr(dispatch.status, 'value') else dispatch.status,
         "logistics_partner": dispatch.logistics_partner,
         "tracking_number": dispatch.tracking_number,

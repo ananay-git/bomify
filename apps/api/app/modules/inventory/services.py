@@ -29,6 +29,17 @@ class InventoryService:
         item = Item(**data.model_dump())
         db.add(item)
         await db.flush()
+        # Record opening stock so the ledger explains every unit on hand.
+        if float(data.current_stock or 0) != 0:
+            db.add(StockTransaction(
+                item_id=item.id,
+                transaction_type=TransactionType.IN if data.current_stock > 0 else TransactionType.OUT,
+                quantity=abs(float(data.current_stock)),
+                reference_id=item.sku,
+                reference_type="opening_stock",
+                notes="Opening stock",
+            ))
+            await db.flush()
         return item
 
     @staticmethod
@@ -39,8 +50,8 @@ class InventoryService:
         return item
 
     @staticmethod
-    async def list_items(db: AsyncSession, skip: int = 0, limit: int = 100) -> tuple[Sequence[Item], int]:
-        result = await db.execute(select(Item).offset(skip).limit(limit))
+    async def list_items(db: AsyncSession, skip: int = 0, limit: int = 1000) -> tuple[Sequence[Item], int]:
+        result = await db.execute(select(Item).order_by(Item.id).offset(skip).limit(limit))
         items = result.scalars().all()
         
         total_res = await db.execute(select(func.count(Item.id)))
@@ -70,9 +81,15 @@ class InventoryService:
         if not item:
             raise NotFoundError("Item not found")
 
+        if data.transaction_type == TransactionType.ADJUSTMENT:
+            if data.quantity < 0:
+                raise ConflictError("Adjusted stock level cannot be negative")
+        elif data.quantity <= 0:
+            raise ConflictError("Quantity must be greater than zero")
+
         tx = StockTransaction(**data.model_dump())
         db.add(tx)
-        
+
         # Update current stock with proper validation
         if data.transaction_type == TransactionType.IN:
             item.current_stock = float(item.current_stock) + float(data.quantity)
@@ -97,7 +114,7 @@ class InventoryService:
         if item_id:
             query = query.where(StockTransaction.item_id == item_id)
             
-        result = await db.execute(query.offset(skip).limit(limit))
+        result = await db.execute(query.order_by(StockTransaction.id.desc()).offset(skip).limit(limit))
         txs = result.scalars().all()
         
         count_q = select(func.count(StockTransaction.id))
@@ -153,8 +170,11 @@ class InventoryService:
         # ── Top 5 selling items (last 3 months) ──
         top_selling: list[TopItemEntry] = []
         try:
-            from app.modules.sales.models import SalesOrderItem, SalesOrder
+            from app.modules.sales.models import SalesOrderItem, SalesOrder, OrderStatus
             three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
+            # Drafts, quotations and cancelled orders are not sales.
+            sold_statuses = (OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.SHIPPED,
+                             OrderStatus.INVOICED, OrderStatus.PAID)
             sell_q = (
                 select(
                     SalesOrderItem.item_id,
@@ -164,7 +184,7 @@ class InventoryService:
                 )
                 .join(Item, SalesOrderItem.item_id == Item.id)
                 .join(SalesOrder, SalesOrderItem.sales_order_id == SalesOrder.id)
-                .where(SalesOrder.order_date >= three_months_ago)
+                .where(SalesOrder.order_date >= three_months_ago, SalesOrder.status.in_(sold_statuses))
                 .group_by(SalesOrderItem.item_id, Item.name)
                 .order_by(func.sum(SalesOrderItem.total_price).desc())
                 .limit(5)
@@ -185,8 +205,14 @@ class InventoryService:
         # ── Top 5 purchased items (last 3 months) ──
         top_purchased: list[TopItemEntry] = []
         try:
-            from app.modules.purchases.models import POItem, PurchaseOrder
+            from app.modules.purchases.models import POItem, PurchaseOrder, POStatus, DocumentType
             three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
+            # Only supplier-side documents are purchases; skip cancelled ones.
+            purchase_filter = (
+                PurchaseOrder.order_date >= three_months_ago,
+                PurchaseOrder.status != POStatus.CANCELLED,
+                PurchaseOrder.document_type.in_((DocumentType.PURCHASE_ORDER, DocumentType.SERVICE_ORDER)),
+            )
             buy_q = (
                 select(
                     POItem.item_id,
@@ -196,7 +222,7 @@ class InventoryService:
                 )
                 .join(Item, POItem.item_id == Item.id)
                 .join(PurchaseOrder, POItem.po_id == PurchaseOrder.id)
-                .where(PurchaseOrder.order_date >= three_months_ago)
+                .where(*purchase_filter)
                 .group_by(POItem.item_id, Item.name)
                 .order_by(func.sum(POItem.ordered_quantity * POItem.unit_price).desc())
                 .limit(5)

@@ -117,7 +117,7 @@ export const bomApi = {
     const res = await api.post<BOM>("/production/boms", data);
     return res.data;
   },
-  update: async (id: number, data: Partial<BOM & { items?: { item_id: number; quantity: number }[] }>) => {
+  update: async (id: number, data: Partial<Pick<BOM, "bom_name" | "fg_item_id" | "status">> & { items?: { item_id: number; quantity: number }[] }) => {
     const res = await api.put<BOM>(`/production/boms/${id}`, data);
     return res.data;
   },

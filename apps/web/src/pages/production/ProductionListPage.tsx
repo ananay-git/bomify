@@ -13,6 +13,7 @@ import CreateBomModal from "@/features/production/components/CreateBomModal";
 import CreateWorkOrderModal from "@/features/production/components/CreateWorkOrderModal";
 import ViewBomModal from "@/features/production/components/ViewBomModal";
 import CompleteProcessModal from "@/features/production/components/CompleteProcessModal";
+import { extractApiError } from "@/lib/errors";
 
 const { Title, Text } = Typography;
 
@@ -275,8 +276,8 @@ function WorkOrdersTab({ refreshTick, onProcessCreated }: { refreshTick: number;
       await workOrderApi.delete(id);
       message.success("Work order deleted");
       fetch();
-    } catch {
-      message.error("Failed to delete work order");
+    } catch (err) {
+      message.error(extractApiError(err, "Failed to delete work order"));
     }
   };
 

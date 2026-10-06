@@ -80,10 +80,10 @@ export default function CreateDispatchPage() {
                         item_sku: match.fg_sku,
                         item_uom: 'Units',
                         ordered_quantity: match.completed_quantity,
-                        already_dispatched: 0,
-                        remaining_quantity: match.completed_quantity,
+                        already_dispatched: match.completed_quantity - match.remaining_quantity,
+                        remaining_quantity: match.remaining_quantity,
                         available_stock: match.available_stock,
-                        dispatch_quantity: match.completed_quantity,
+                        dispatch_quantity: match.remaining_quantity,
                     }]);
                 }
             }).catch(() => message.error('Failed to load production item'));

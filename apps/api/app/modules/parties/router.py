@@ -139,7 +139,7 @@ async def update_location(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    return await services.update_party_location(db, location_id, body)
+    return await services.update_party_location(db, party_id, location_id, body)
 
 @router.delete("/{party_id}/locations/{location_id}", status_code=204)
 async def delete_location(
@@ -148,7 +148,7 @@ async def delete_location(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    await services.delete_party_location(db, location_id)
+    await services.delete_party_location(db, party_id, location_id)
 
 @router.patch("/{party_id}/contacts/{contact_id}", response_model=PartyContactResponse)
 async def update_contact(
@@ -158,7 +158,7 @@ async def update_contact(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    return await services.update_party_contact(db, contact_id, body)
+    return await services.update_party_contact(db, party_id, contact_id, body)
 
 @router.delete("/{party_id}/contacts/{contact_id}", status_code=204)
 async def delete_contact(
@@ -167,7 +167,7 @@ async def delete_contact(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    await services.delete_party_contact(db, contact_id)
+    await services.delete_party_contact(db, party_id, contact_id)
 
 @router.delete("/{party_id}/tags/{tag_id}", status_code=204)
 async def delete_tag(
@@ -176,4 +176,4 @@ async def delete_tag(
     db: AsyncSession = Depends(get_db),
     _current_user: User = Depends(get_current_user),
 ):
-    await services.delete_party_tag(db, tag_id)
+    await services.delete_party_tag(db, party_id, tag_id)

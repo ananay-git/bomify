@@ -257,11 +257,38 @@ async def seed_dummy_erp_data() -> None:
         print("Dummy ERP data seeded successfully (Parties, Locations, More Items).")
 
 
+async def backfill_opening_stock() -> None:
+    """Give stock that has no ledger history an opening-stock entry, so the
+    stock ledger explains every unit on hand. Idempotent."""
+    from app.modules.inventory.models import TransactionType
+
+    async with async_session() as session:
+        has_history = select(StockTransaction.item_id).distinct()
+        result = await session.execute(
+            select(Item).where(Item.current_stock != 0, Item.id.not_in(has_history))
+        )
+        items = result.scalars().all()
+        for item in items:
+            stock = float(item.current_stock)
+            session.add(StockTransaction(
+                item_id=item.id,
+                transaction_type=TransactionType.IN if stock > 0 else TransactionType.OUT,
+                quantity=abs(stock),
+                reference_id=item.sku,
+                reference_type="opening_stock",
+                notes="Opening stock",
+            ))
+        await session.commit()
+        if items:
+            print(f"Recorded opening stock for {len(items)} item(s).")
+
+
 async def async_main() -> None:
     await setup_copilot_reader()
     await seed_admin()
     await seed_demo_bom()
     await seed_dummy_erp_data()
+    await backfill_opening_stock()
     # Seed default ERP settings
     async with async_session() as session:
         await seed_default_settings(session)

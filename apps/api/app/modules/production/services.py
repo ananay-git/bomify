@@ -172,6 +172,33 @@ async def _enrich_sc(db: AsyncSession, sc: SubContract) -> dict:
     }
 
 
+async def _validate_bom_items(db: AsyncSession, fg_item_id: int, items) -> None:
+    if not await db.get(Item, fg_item_id):
+        raise NotFoundError(f"Finished good item {fg_item_id} not found")
+    for item_data in items or []:
+        if item_data.item_id == fg_item_id:
+            raise ConflictError("A BOM cannot use its own finished good as a component")
+        if not await db.get(Item, item_data.item_id):
+            raise NotFoundError(f"Component item {item_data.item_id} not found")
+
+
+async def _load_process(db: AsyncSession, pp_id: int) -> ProductionProcess:
+    result = await db.execute(
+        select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
+        .where(ProductionProcess.id == pp_id)
+        .execution_options(populate_existing=True)
+    )
+    pp = result.scalar_one_or_none()
+    if not pp:
+        raise NotFoundError("Production process not found")
+    return pp
+
+
+def _ensure_process_open(pp: ProductionProcess, action: str) -> None:
+    if pp.stage in (ProcessStage.COMPLETED, ProcessStage.CANCELLED):
+        raise ConflictError(f"Cannot {action}: production process {pp.process_number} is {pp.stage.value}")
+
+
 # ─── BOM Service ─────────────────────────────────────────────────────────────
 
 class BOMService:
@@ -183,6 +210,7 @@ class BOMService:
 
     @staticmethod
     async def create(db: AsyncSession, data: BOMCreate, username: str | None = None) -> dict:
+        await _validate_bom_items(db, data.fg_item_id, data.items)
         bom_id = await BOMService._next_bom_id(db)
         bom = BOM(
             bom_id=bom_id, bom_name=data.bom_name,
@@ -229,6 +257,10 @@ class BOMService:
         bom = result.scalar_one_or_none()
         if not bom:
             raise NotFoundError("BOM not found")
+        await _validate_bom_items(
+            db, data.fg_item_id if data.fg_item_id is not None else bom.fg_item_id,
+            data.items if data.items is not None else bom.items,
+        )
         if data.bom_name is not None:
             bom.bom_name = data.bom_name
         if data.fg_item_id is not None:
@@ -263,6 +295,10 @@ class BOMService:
 class WorkOrderService:
     @staticmethod
     async def create(db: AsyncSession, data: WorkOrderCreate, username: str | None = None) -> dict:
+        if not await db.get(Item, data.item_id):
+            raise NotFoundError(f"Item {data.item_id} not found")
+        if data.buyer_id is not None and not await db.get(Party, data.buyer_id):
+            raise NotFoundError(f"Buyer {data.buyer_id} not found")
         wo = WorkOrder(
             item_id=data.item_id, quantity=data.quantity,
             buyer_id=data.buyer_id, document_number=data.document_number,
@@ -308,6 +344,17 @@ class WorkOrderService:
         wo = await db.get(WorkOrder, wo_id)
         if not wo:
             raise NotFoundError("Work order not found")
+        # Deleting would orphan the process and break its link to the sales order.
+        active = (await db.execute(
+            select(ProductionProcess.process_number).where(
+                ProductionProcess.work_order_id == wo.id,
+                ProductionProcess.stage != ProcessStage.CANCELLED,
+            )
+        )).scalars().first()
+        if active:
+            raise ConflictError(
+                f"Cannot delete work order: production process {active} was started from it"
+            )
         await db.delete(wo)
 
     @staticmethod
@@ -365,6 +412,16 @@ class ProductionProcessService:
 
     @staticmethod
     async def create(db: AsyncSession, data: ProductionProcessCreate, username: str | None = None) -> dict:
+        if not await db.get(Item, data.fg_item_id):
+            raise NotFoundError(f"Item {data.fg_item_id} not found")
+        if data.bom_id is not None:
+            bom = await db.get(BOM, data.bom_id)
+            if not bom:
+                raise NotFoundError(f"BOM {data.bom_id} not found")
+            if bom.fg_item_id != data.fg_item_id:
+                raise ConflictError(f"BOM {bom.bom_id} is for a different finished good")
+        if data.work_order_id is not None and not await db.get(WorkOrder, data.work_order_id):
+            raise NotFoundError(f"Work order {data.work_order_id} not found")
         process_number = await ProductionProcessService._next_process_number(db)
         pp = ProductionProcess(
             process_number=process_number,
@@ -419,49 +476,53 @@ class ProductionProcessService:
 
     @staticmethod
     async def update(db: AsyncSession, pp_id: int, data: ProductionProcessUpdate, username: str | None = None) -> dict:
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == pp_id)
-        )
-        pp = result.scalar_one_or_none()
-        if not pp:
-            raise NotFoundError("Production process not found")
+        """Update a process. Completion and cancellation go through the same
+        inventory-aware paths as the dedicated endpoints."""
+        pp = await _load_process(db, pp_id)
         update_data = data.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(pp, key, value)
-        pp.last_modified_by = username
 
-        # Auto-complete if target reached
-        if pp.completed_quantity >= pp.target_quantity and pp.stage != ProcessStage.COMPLETED:
-            pp.stage = ProcessStage.COMPLETED
-            pp.status = ProcessStatus.COMPLETED
-            # Add finished goods to inventory
-            inv_result = await db.execute(
-                select(Item).where(Item.id == pp.fg_item_id).with_for_update()
+        if pp.stage in (ProcessStage.COMPLETED, ProcessStage.CANCELLED):
+            if set(update_data) - {"expected_completion_date"}:
+                raise ConflictError(
+                    f"Production process {pp.process_number} is {pp.stage.value}; it can no longer change"
+                )
+
+        if "expected_completion_date" in update_data:
+            pp.expected_completion_date = update_data["expected_completion_date"]
+
+        completed_qty = update_data.get("completed_quantity")
+        wants_complete = (
+            update_data.get("stage") == ProcessStage.COMPLETED
+            or update_data.get("status") == ProcessStatus.COMPLETED
+            or (completed_qty is not None and float(completed_qty) >= float(pp.target_quantity))
+        )
+        wants_cancel = (
+            update_data.get("stage") == ProcessStage.CANCELLED
+            or update_data.get("status") == ProcessStatus.CANCELLED
+        )
+
+        if wants_cancel and pp.stage not in (ProcessStage.COMPLETED, ProcessStage.CANCELLED):
+            await ProductionProcessService._cancel(db, pp, username)
+        elif wants_complete and pp.stage != ProcessStage.COMPLETED:
+            await ProductionProcessService._complete(
+                db, pp, float(completed_qty) if completed_qty else None, username
             )
-            fg_item = inv_result.scalar_one_or_none()
-            if fg_item:
-                fg_item.current_stock = float(fg_item.current_stock) + float(pp.completed_quantity)
-                db.add(StockTransaction(
-                    item_id=fg_item.id, transaction_type=TransactionType.IN,
-                    quantity=float(pp.completed_quantity),
-                    reference_id=pp.process_number, reference_type="production_process",
-                    notes=f"Production completed: {pp.process_number}",
-                ))
-        return await _enrich_process(db, pp)
+        else:
+            # Progress bookkeeping only — no inventory effect until completion.
+            for key in ("stage", "status", "completed_quantity"):
+                if key in update_data and update_data[key] is not None:
+                    setattr(pp, key, update_data[key])
+            pp.last_modified_by = username
+
+        await db.flush()
+        return await _enrich_process(db, await _load_process(db, pp_id))
 
     @staticmethod
-    async def issue_items(db: AsyncSession, data: IssueItemsRequest, username: str | None = None) -> dict:
-        """Issue raw materials from inventory for a production process."""
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == data.process_id)
-        )
-        pp = result.scalar_one_or_none()
-        if not pp:
-            raise NotFoundError("Production process not found")
-
-        for issue in data.items:
+    async def _issue(db: AsyncSession, pp: ProductionProcess, items, note: str) -> None:
+        """Deduct raw materials from inventory for a process and record them."""
+        for issue in items:
+            if float(issue.issued_quantity) <= 0:
+                continue
             # Deduct from inventory with row-level locking
             inv_result = await db.execute(
                 select(Item).where(Item.id == issue.item_id).with_for_update()
@@ -470,7 +531,7 @@ class ProductionProcessService:
             if not item:
                 raise NotFoundError(f"Item {issue.item_id} not found")
             new_stock = float(item.current_stock) - float(issue.issued_quantity)
-            if new_stock < 0:
+            if new_stock < -1e-9:
                 raise ConflictError(
                     f"Insufficient stock for {item.sku}. "
                     f"Available: {item.current_stock}, Requested: {issue.issued_quantity}"
@@ -480,7 +541,7 @@ class ProductionProcessService:
                 item_id=item.id, transaction_type=TransactionType.OUT,
                 quantity=float(issue.issued_quantity),
                 reference_id=pp.process_number, reference_type="production_issue",
-                notes=f"Issued for production: {pp.process_number}",
+                notes=f"{note}: {pp.process_number}",
             ))
             db.add(IssuedItem(
                 production_process_id=pp.id, item_id=issue.item_id,
@@ -488,78 +549,58 @@ class ProductionProcessService:
                 issued_quantity=issue.issued_quantity,
             ))
 
+    @staticmethod
+    async def _bom_requirements(db: AsyncSession, pp: ProductionProcess) -> list:
+        from app.modules.production.schemas import IssuedItemCreate
+
+        bom_result = await db.execute(
+            select(BOM).options(selectinload(BOM.items)).where(BOM.id == pp.bom_id)
+        )
+        bom = bom_result.scalar_one_or_none()
+        if not bom:
+            raise NotFoundError("BOM not found")
+        if not bom.items:
+            raise ConflictError(
+                f"BOM {bom.bom_id} has no raw material components defined. "
+                "Please add components to the BOM before issuing materials."
+            )
+        multiplier = float(pp.target_quantity)
+        return [
+            IssuedItemCreate(
+                item_id=bi.item_id,
+                required_quantity=float(bi.quantity) * multiplier,
+                issued_quantity=float(bi.quantity) * multiplier,
+            )
+            for bi in bom.items
+        ]
+
+    @staticmethod
+    async def issue_items(db: AsyncSession, data: IssueItemsRequest, username: str | None = None) -> dict:
+        """Issue raw materials from inventory for a production process."""
+        pp = await _load_process(db, data.process_id)
+        _ensure_process_open(pp, "issue materials")
+
+        await ProductionProcessService._issue(db, pp, data.items, "Issued for production")
+
         pp.stage = ProcessStage.MATERIAL_ISSUED
         pp.status = ProcessStatus.RUNNING
         pp.last_modified_by = username
         await db.flush()
-
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == pp.id)
-        )
-        return await _enrich_process(db, result.scalar_one())
+        return await _enrich_process(db, await _load_process(db, pp.id))
 
     @staticmethod
-    async def complete(db: AsyncSession, pp_id: int, completed_quantity: float | None = None, username: str | None = None) -> dict:
-        """Mark a production process as complete.
-
-        - If materials have not been issued yet and a BOM is linked, auto-issues them first.
-        - Adds the finished good quantity to inventory.
-        - Sets stage=completed and status=completed.
-        """
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == pp_id)
-        )
-        pp = result.scalar_one_or_none()
-        if not pp:
-            raise NotFoundError("Production process not found")
-        if pp.stage == ProcessStage.COMPLETED:
-            raise ConflictError("Production process is already completed")
-        if pp.stage == ProcessStage.CANCELLED:
-            raise ConflictError("Cannot complete a cancelled production process")
-
+    async def _complete(
+        db: AsyncSession, pp: ProductionProcess, completed_quantity: float | None, username: str | None
+    ) -> None:
+        """Single completion path: auto-issue BOM materials if none were issued,
+        add finished goods to stock, and close the linked work order."""
+        _ensure_process_open(pp, "complete it")
         qty = completed_quantity if completed_quantity is not None else float(pp.target_quantity)
 
-        # Auto-issue raw materials from BOM if not yet issued
-        if pp.stage == ProcessStage.OPEN and pp.bom_id:
-            bom_result = await db.execute(
-                select(BOM).options(selectinload(BOM.items)).where(BOM.id == pp.bom_id)
-            )
-            bom = bom_result.scalar_one_or_none()
-            if bom and not bom.items:
-                raise ConflictError(
-                    f"BOM {bom.bom_id} has no raw material components defined. "
-                    "Please add components to the BOM before completing this process."
-                )
-            if bom:
-                for bi in bom.items:
-                    required = float(bi.quantity) * float(pp.target_quantity)
-                    inv_result = await db.execute(
-                        select(Item).where(Item.id == bi.item_id).with_for_update()
-                    )
-                    item = inv_result.scalar_one_or_none()
-                    if not item:
-                        raise NotFoundError(f"Raw material item {bi.item_id} not found")
-                    new_stock = float(item.current_stock) - required
-                    if new_stock < 0:
-                        raise ConflictError(
-                            f"Insufficient stock for {item.sku}. "
-                            f"Available: {item.current_stock}, Required: {required}"
-                        )
-                    item.current_stock = new_stock
-                    db.add(StockTransaction(
-                        item_id=item.id, transaction_type=TransactionType.OUT,
-                        quantity=required,
-                        reference_id=pp.process_number, reference_type="production_issue",
-                        notes=f"Auto-issued on completion: {pp.process_number}",
-                    ))
-                    db.add(IssuedItem(
-                        production_process_id=pp.id, item_id=bi.item_id,
-                        required_quantity=required, issued_quantity=required,
-                    ))
+        if pp.stage == ProcessStage.OPEN and pp.bom_id and not pp.issued_items:
+            requirements = await ProductionProcessService._bom_requirements(db, pp)
+            await ProductionProcessService._issue(db, pp, requirements, "Auto-issued on completion")
 
-        # Add finished goods to inventory
         fg_result = await db.execute(
             select(Item).where(Item.id == pp.fg_item_id).with_for_update()
         )
@@ -578,50 +619,65 @@ class ProductionProcessService:
         pp.status = ProcessStatus.COMPLETED
         pp.last_modified_by = username
 
-        # Mark linked work order as completed
         if pp.work_order_id:
             wo = await db.get(WorkOrder, pp.work_order_id)
             if wo:
                 wo.process_stage = WorkOrderStage.COMPLETED
 
+    @staticmethod
+    async def _cancel(db: AsyncSession, pp: ProductionProcess, username: str | None) -> None:
+        """Cancel an unfinished process: issued materials go back to stock and the
+        work order re-opens so it can be started again."""
+        for ii in pp.issued_items:
+            qty = float(ii.issued_quantity or 0)
+            if qty <= 0:
+                continue
+            item = (await db.execute(
+                select(Item).where(Item.id == ii.item_id).with_for_update()
+            )).scalar_one_or_none()
+            if item:
+                item.current_stock = float(item.current_stock) + qty
+                db.add(StockTransaction(
+                    item_id=item.id, transaction_type=TransactionType.IN,
+                    quantity=qty,
+                    reference_id=pp.process_number, reference_type="production_cancelled",
+                    notes=f"Materials returned from cancelled process {pp.process_number}",
+                ))
+        pp.stage = ProcessStage.CANCELLED
+        pp.status = ProcessStatus.CANCELLED
+        pp.last_modified_by = username
+        if pp.work_order_id:
+            wo = await db.get(WorkOrder, pp.work_order_id)
+            if wo and wo.process_stage == WorkOrderStage.IN_PROGRESS:
+                wo.process_stage = WorkOrderStage.OPEN
+
+    @staticmethod
+    async def complete(db: AsyncSession, pp_id: int, completed_quantity: float | None = None, username: str | None = None) -> dict:
+        """Mark a production process as complete.
+
+        - If materials have not been issued yet and a BOM is linked, auto-issues them first.
+        - Adds the finished good quantity to inventory.
+        - Sets stage=completed and status=completed.
+        """
+        pp = await _load_process(db, pp_id)
+        await ProductionProcessService._complete(db, pp, completed_quantity, username)
         await db.flush()
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == pp.id)
-        )
-        return await _enrich_process(db, result.scalar_one())
+        return await _enrich_process(db, await _load_process(db, pp.id))
 
     @staticmethod
     async def issue_items_from_bom(db: AsyncSession, process_id: int, username: str | None = None) -> dict:
-        """Auto-issue all materials from the linked BOM."""
-        result = await db.execute(
-            select(ProductionProcess).options(selectinload(ProductionProcess.issued_items))
-            .where(ProductionProcess.id == process_id)
-        )
-        pp = result.scalar_one_or_none()
-        if not pp:
-            raise NotFoundError("Production process not found")
+        """Auto-issue all materials from the linked BOM (once)."""
+        pp = await _load_process(db, process_id)
+        _ensure_process_open(pp, "issue materials")
         if not pp.bom_id:
             raise ConflictError("No BOM linked to this production process")
+        if pp.issued_items:
+            raise ConflictError(
+                f"Materials have already been issued for {pp.process_number}"
+            )
 
-        bom_result = await db.execute(
-            select(BOM).options(selectinload(BOM.items)).where(BOM.id == pp.bom_id)
-        )
-        bom = bom_result.scalar_one_or_none()
-        if not bom:
-            raise NotFoundError("BOM not found")
-
-        multiplier = float(pp.target_quantity)
-        items_to_issue = []
-        for bi in bom.items:
-            qty = float(bi.quantity) * multiplier
-            items_to_issue.append({"item_id": bi.item_id, "required_quantity": qty, "issued_quantity": qty})
-
-        from app.modules.production.schemas import IssuedItemCreate
-        request = IssueItemsRequest(
-            process_id=process_id,
-            items=[IssuedItemCreate(**i) for i in items_to_issue],
-        )
+        requirements = await ProductionProcessService._bom_requirements(db, pp)
+        request = IssueItemsRequest(process_id=process_id, items=requirements)
         return await ProductionProcessService.issue_items(db, request, username)
 
 

@@ -31,7 +31,7 @@ async def create_item(data: ItemCreate, db: AsyncSession = Depends(get_db), curr
     return await InventoryService.create_item(db, data)
 
 @router.get("/items", response_model=ItemListResponse)
-async def list_items(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_module(Module.INVENTORY))):
+async def list_items(skip: int = 0, limit: int = 1000, db: AsyncSession = Depends(get_db), current_user: User = Depends(require_module(Module.INVENTORY))):
     items, total = await InventoryService.list_items(db, skip, limit)
     return {"items": items, "total": total}
 

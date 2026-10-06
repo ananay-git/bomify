@@ -1,6 +1,11 @@
 """
 Dispatch Services — Business logic for the Dispatch module.
+
+Stock leaves inventory when a dispatch is packed (and returns if a packed
+dispatch is cancelled). The linked Sales Order's status is derived from the
+progress of its dispatches.
 """
+from collections import defaultdict
 from typing import Sequence
 from datetime import datetime, timezone
 from sqlalchemy import select, func, or_
@@ -23,8 +28,21 @@ VALID_TRANSITIONS: dict[DispatchStatus, list[DispatchStatus]] = {
     DispatchStatus.CANCELLED: [],
 }
 
-# Sales order statuses that allow dispatch creation
-DISPATCHABLE_STATUSES = {OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.PAID}
+# Sales order statuses that allow dispatch creation. (A PAID order has already
+# been shipped and invoiced, so dispatching it again would ship it twice.)
+DISPATCHABLE_STATUSES = {OrderStatus.CONFIRMED, OrderStatus.PROCESSING}
+
+# Dispatch statuses in which goods have left (or are leaving) the warehouse.
+GOODS_OUT_STATUSES = (DispatchStatus.PACKED, DispatchStatus.SHIPPED, DispatchStatus.DELIVERED)
+SHIPPED_STATUSES = (DispatchStatus.SHIPPED, DispatchStatus.DELIVERED)
+
+
+def _ordered_quantities(sales_order: SalesOrder) -> dict[int, float]:
+    """{item_id: total ordered} — an item may appear on several order lines."""
+    ordered: dict[int, float] = defaultdict(float)
+    for so_item in sales_order.items:
+        ordered[so_item.item_id] += float(so_item.quantity)
+    return dict(ordered)
 
 
 class DispatchService:
@@ -71,6 +89,7 @@ class DispatchService:
                 joinedload(Dispatch.sales_order).joinedload(SalesOrder.customer),
             )
             .where(Dispatch.id == dispatch_id)
+            .execution_options(populate_existing=True)
         )
         dispatch = result.unique().scalar_one_or_none()
         if not dispatch:
@@ -80,33 +99,110 @@ class DispatchService:
     # ─── Get already dispatched quantities for a Sales Order ────
 
     @staticmethod
-    async def _get_dispatched_quantities(db: AsyncSession, sales_order_id: int) -> dict[int, float]:
-        """Returns {product_id: total_dispatched_qty} for non-cancelled dispatches."""
+    async def _get_dispatched_quantities(
+        db: AsyncSession, sales_order_id: int, statuses: Sequence[DispatchStatus] | None = None
+    ) -> dict[int, float]:
+        """Returns {product_id: total qty} for the order's dispatches
+        (all non-cancelled ones unless specific statuses are given)."""
+        status_filter = (
+            Dispatch.status.in_(statuses) if statuses is not None
+            else Dispatch.status != DispatchStatus.CANCELLED
+        )
         result = await db.execute(
             select(DispatchItem.product_id, func.sum(DispatchItem.quantity))
             .join(Dispatch, DispatchItem.dispatch_id == Dispatch.id)
-            .where(
-                Dispatch.sales_order_id == sales_order_id,
-                Dispatch.status != DispatchStatus.CANCELLED,
-            )
+            .where(Dispatch.sales_order_id == sales_order_id, status_filter)
             .group_by(DispatchItem.product_id)
         )
         return {row[0]: float(row[1]) for row in result.all()}
 
+    @staticmethod
+    async def _sync_sales_order_status(db: AsyncSession, sales_order_id: int | None) -> None:
+        """Derive the order's fulfilment status from its dispatches:
+        fully shipped → SHIPPED; anything packed/shipped → PROCESSING; else CONFIRMED."""
+        if not sales_order_id:
+            return
+        so_result = await db.execute(
+            select(SalesOrder).options(selectinload(SalesOrder.items))
+            .where(SalesOrder.id == sales_order_id)
+        )
+        so = so_result.unique().scalar_one_or_none()
+        if not so or so.status not in (OrderStatus.CONFIRMED, OrderStatus.PROCESSING, OrderStatus.SHIPPED):
+            return
+
+        await db.flush()
+        ordered = _ordered_quantities(so)
+        shipped = await DispatchService._get_dispatched_quantities(db, so.id, SHIPPED_STATUSES)
+        goods_out = await DispatchService._get_dispatched_quantities(db, so.id, GOODS_OUT_STATUSES)
+
+        if ordered and all(shipped.get(i, 0.0) + 1e-9 >= q for i, q in ordered.items()):
+            so.status = OrderStatus.SHIPPED
+        elif any(q > 0 for q in goods_out.values()):
+            so.status = OrderStatus.PROCESSING
+        else:
+            so.status = OrderStatus.CONFIRMED
+
     # ─── Create ─────────────────────────────────────────────────
+
+    @staticmethod
+    @staticmethod
+    async def _load_sales_order(db: AsyncSession, sales_order_id: int) -> SalesOrder | None:
+        so_result = await db.execute(
+            select(SalesOrder)
+            .options(selectinload(SalesOrder.items).joinedload(SalesOrderItem.inventory_item))
+            .where(SalesOrder.id == sales_order_id)
+        )
+        return so_result.unique().scalar_one_or_none()
+
+    @staticmethod
+    async def _sales_order_for_process(db: AsyncSession, process_id: int, data: DispatchCreate) -> int | None:
+        """A process started from a work order made for a sales order ships against
+        that order — if the order is dispatchable and still needs these goods."""
+        from app.modules.production.models import ProductionProcess, WorkOrder
+
+        pp = await db.get(ProductionProcess, process_id)
+        if not pp:
+            raise NotFoundError(f"Production process {process_id} not found")
+        if not pp.work_order_id:
+            return None
+        wo = await db.get(WorkOrder, pp.work_order_id)
+        if not wo or not wo.document_number:
+            return None
+        so_id = (await db.execute(
+            select(SalesOrder.id).where(SalesOrder.order_number == wo.document_number)
+        )).scalar_one_or_none()
+        if not so_id:
+            return None
+        so = await DispatchService._load_sales_order(db, so_id)
+        if not so or so.status not in DISPATCHABLE_STATUSES:
+            return None
+        ordered = _ordered_quantities(so)
+        dispatched = await DispatchService._get_dispatched_quantities(db, so.id)
+        requested: dict[int, float] = defaultdict(float)
+        for line in data.items:
+            requested[line.product_id] += line.quantity
+        for product_id, qty in requested.items():
+            if qty > ordered.get(product_id, 0.0) - dispatched.get(product_id, 0.0) + 1e-9:
+                return None
+        return so.id
 
     @staticmethod
     async def create_dispatch(db: AsyncSession, data: DispatchCreate) -> Dispatch:
         """Create a dispatch. Can be from a sales order or a direct dispatch."""
+        sales_order_id = data.sales_order_id
+        if data.production_process_id and not sales_order_id:
+            sales_order_id = await DispatchService._sales_order_for_process(
+                db, data.production_process_id, data
+            )
+        elif data.production_process_id:
+            from app.modules.production.models import ProductionProcess
+            if not await db.get(ProductionProcess, data.production_process_id):
+                raise NotFoundError(f"Production process {data.production_process_id} not found")
+
         # Validate sales order if provided
         sales_order = None
-        if data.sales_order_id:
-            so_result = await db.execute(
-                select(SalesOrder)
-                .options(selectinload(SalesOrder.items).joinedload(SalesOrderItem.inventory_item))
-                .where(SalesOrder.id == data.sales_order_id)
-            )
-            sales_order = so_result.unique().scalar_one_or_none()
+        if sales_order_id:
+            sales_order = await DispatchService._load_sales_order(db, sales_order_id)
             if not sales_order:
                 raise NotFoundError("Sales order not found")
 
@@ -117,20 +213,18 @@ class DispatchService:
             )
 
         # Get already dispatched quantities
-        dispatched_map = {}
-        so_items_map: dict[int, SalesOrderItem] = {}
-        
-        if data.sales_order_id:
-            dispatched_map = await DispatchService._get_dispatched_quantities(db, data.sales_order_id)
-            for so_item in sales_order.items:
-                so_items_map[so_item.item_id] = so_item
+        dispatched_map: dict[int, float] = {}
+        ordered_map: dict[int, float] = {}
+        if sales_order:
+            dispatched_map = await DispatchService._get_dispatched_quantities(db, sales_order.id)
+            ordered_map = _ordered_quantities(sales_order)
 
         # Generate dispatch number
         dispatch_number = await DispatchService._generate_dispatch_number(db)
 
         dispatch = Dispatch(
             dispatch_number=dispatch_number,
-            sales_order_id=data.sales_order_id,
+            sales_order_id=sales_order_id,
             production_process_id=data.production_process_id,
             status=DispatchStatus.DRAFT,
             dispatch_date=data.dispatch_date or datetime.now(timezone.utc),
@@ -145,25 +239,28 @@ class DispatchService:
         await db.flush()
 
         # Validate and create dispatch items
+        requested: dict[int, float] = defaultdict(float)
         for item_data in data.items:
-            if data.sales_order_id:
+            inv_item = await db.get(Item, item_data.product_id)
+            if not inv_item:
+                raise NotFoundError(f"Inventory item {item_data.product_id} not found")
+
+            if sales_order:
                 # Check item is part of the sales order
-                so_item = so_items_map.get(item_data.product_id)
-                if not so_item:
+                if item_data.product_id not in ordered_map:
                     raise ConflictError(
                         f"Product {item_data.product_id} is not part of Sales Order {sales_order.order_number}"
                     )
 
-                # Check quantity doesn't exceed remaining
-                ordered_qty = float(so_item.quantity)
+                # Check quantity (across all lines of this request) doesn't exceed remaining
+                requested[item_data.product_id] += item_data.quantity
+                ordered_qty = ordered_map[item_data.product_id]
                 already_dispatched = dispatched_map.get(item_data.product_id, 0)
                 remaining = ordered_qty - already_dispatched
 
-                if item_data.quantity > remaining:
-                    inv_item = so_item.inventory_item
-                    item_name = inv_item.name if inv_item else f"Product #{item_data.product_id}"
+                if requested[item_data.product_id] > remaining + 1e-9:
                     raise ConflictError(
-                        f"Cannot dispatch {item_data.quantity} of '{item_name}'. "
+                        f"Cannot dispatch {requested[item_data.product_id]} of '{inv_item.name}'. "
                         f"Ordered: {ordered_qty}, Already dispatched: {already_dispatched}, Remaining: {remaining}"
                     )
 
@@ -305,12 +402,7 @@ class DispatchService:
             db.add(stock_tx)
 
         dispatch.status = DispatchStatus.PACKED
-        
-        # Auto-update Sales Order status
-        if dispatch.sales_order_id:
-            so = await db.get(SalesOrder, dispatch.sales_order_id)
-            if so and so.status == OrderStatus.CONFIRMED:
-                so.status = OrderStatus.PROCESSING
+        await DispatchService._sync_sales_order_status(db, dispatch.sales_order_id)
 
         await db.flush()
         return await DispatchService._load_dispatch(db, dispatch_id)
@@ -330,12 +422,8 @@ class DispatchService:
 
         dispatch.status = DispatchStatus.SHIPPED
         dispatch.dispatch_date = dispatch.dispatch_date or datetime.now(timezone.utc)
-        
-        # Auto-update Sales Order status
-        if dispatch.sales_order_id:
-            so = await db.get(SalesOrder, dispatch.sales_order_id)
-            if so and so.status in (OrderStatus.CONFIRMED, OrderStatus.PROCESSING):
-                so.status = OrderStatus.SHIPPED
+        # Only a fully shipped order becomes SHIPPED; partial shipments stay PROCESSING.
+        await DispatchService._sync_sales_order_status(db, dispatch.sales_order_id)
 
         await db.flush()
         return await DispatchService._load_dispatch(db, dispatch_id)
@@ -379,6 +467,7 @@ class DispatchService:
                     db.add(stock_tx)
 
         dispatch.status = DispatchStatus.CANCELLED
+        await DispatchService._sync_sales_order_status(db, dispatch.sales_order_id)
         await db.flush()
         return await DispatchService._load_dispatch(db, dispatch_id)
 
@@ -405,8 +494,13 @@ class DispatchService:
 
             order_items = []
             has_remaining = False
+            ordered_map = _ordered_quantities(order)
+            seen: set[int] = set()
             for so_item in order.items:
-                ordered = float(so_item.quantity)
+                if so_item.item_id in seen:
+                    continue  # one row per product; quantities are summed across lines
+                seen.add(so_item.item_id)
+                ordered = ordered_map[so_item.item_id]
                 already_dispatched = dispatched_map.get(so_item.item_id, 0)
                 remaining = ordered - already_dispatched
 
@@ -469,6 +563,24 @@ class DispatchService:
                     so_res = await db.execute(select(SalesOrder.id).where(SalesOrder.order_number == wo.document_number))
                     linked_sales_order_id = so_res.scalar_one_or_none()
 
+            # Skip output that has already been dispatched — from this process, or
+            # against the sales order it was made for (the UI dispatches it that way).
+            already = float((await db.execute(
+                select(func.coalesce(func.sum(DispatchItem.quantity), 0))
+                .join(Dispatch, DispatchItem.dispatch_id == Dispatch.id)
+                .where(
+                    Dispatch.production_process_id == pp.id,
+                    Dispatch.status != DispatchStatus.CANCELLED,
+                    DispatchItem.product_id == pp.fg_item_id,
+                )
+            )).scalar_one())
+            if linked_sales_order_id:
+                so_dispatched = await DispatchService._get_dispatched_quantities(db, linked_sales_order_id)
+                already = max(already, so_dispatched.get(pp.fg_item_id, 0.0))
+            remaining = float(pp.completed_quantity) - already
+            if remaining <= 0:
+                continue
+
             ready_items.append({
                 "process_id": pp.id,
                 "process_number": pp.process_number,
@@ -476,6 +588,7 @@ class DispatchService:
                 "fg_name": fg_item.name,
                 "fg_sku": fg_item.sku,
                 "completed_quantity": float(pp.completed_quantity),
+                "remaining_quantity": min(remaining, float(fg_item.current_stock)),
                 "available_stock": float(fg_item.current_stock),
                 "linked_sales_order_id": linked_sales_order_id,
                 "completion_date": pp.updated_at.isoformat() if pp.updated_at else None

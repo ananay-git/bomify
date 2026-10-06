@@ -226,3 +226,11 @@ apps/web/dist/
 
 # Docker volumes
 pgdata/
+
+# Production secrets
+.env.prod
+
+# Multi-client deployment state (lives on the server only)
+deploy/clients/
+deploy/clients.list
+deploy/edge/

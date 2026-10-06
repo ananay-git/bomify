@@ -1,6 +1,7 @@
 """
 Sales Services — Business logic for the Sales Order module.
 """
+from collections import defaultdict
 from typing import Sequence
 from datetime import datetime, timezone
 from sqlalchemy import select, func, or_, extract
@@ -11,6 +12,10 @@ from app.modules.sales.schemas import SalesOrderCreate, SalesOrderUpdate, SalesO
 from app.modules.inventory.models import Item, StockTransaction, TransactionType
 from app.modules.parties.models import Party
 from app.core.exceptions import NotFoundError, ConflictError
+
+# Stock model: inventory moves only when goods physically leave (dispatch packed,
+# or a direct ship). Confirming an order commits stock without moving it.
+OPEN_ORDER_STATUSES = (OrderStatus.CONFIRMED, OrderStatus.PROCESSING)
 
 # Valid status transitions
 VALID_TRANSITIONS: dict[OrderStatus, list[OrderStatus]] = {
@@ -54,6 +59,91 @@ def _enrich_item_response(item: SalesOrderItem) -> dict:
         data["item_uom"] = inv.unit_of_measure
         data["available_stock"] = float(inv.current_stock)
     return data
+
+
+def _active_dispatch_statuses():
+    from app.modules.dispatch.models import DispatchStatus
+    return (DispatchStatus.PACKED, DispatchStatus.SHIPPED, DispatchStatus.DELIVERED)
+
+
+async def committed_quantities(
+    db: AsyncSession, item_ids: list[int], exclude_order_id: int | None = None
+) -> dict[int, float]:
+    """Stock promised to open (confirmed/processing) orders that has not left yet."""
+    from app.modules.dispatch.models import Dispatch, DispatchItem
+
+    if not item_ids:
+        return {}
+    q = (
+        select(SalesOrderItem.sales_order_id, SalesOrderItem.item_id, func.sum(SalesOrderItem.quantity))
+        .join(SalesOrder, SalesOrder.id == SalesOrderItem.sales_order_id)
+        .where(SalesOrder.status.in_(OPEN_ORDER_STATUSES), SalesOrderItem.item_id.in_(item_ids))
+        .group_by(SalesOrderItem.sales_order_id, SalesOrderItem.item_id)
+    )
+    if exclude_order_id is not None:
+        q = q.where(SalesOrder.id != exclude_order_id)
+    ordered = {(so, it): float(qty) for so, it, qty in (await db.execute(q)).all()}
+    if not ordered:
+        return {}
+
+    moved_rows = await db.execute(
+        select(Dispatch.sales_order_id, DispatchItem.product_id, func.sum(DispatchItem.quantity))
+        .join(Dispatch, Dispatch.id == DispatchItem.dispatch_id)
+        .where(
+            Dispatch.sales_order_id.in_({so for so, _ in ordered}),
+            Dispatch.status.in_(_active_dispatch_statuses()),
+            DispatchItem.product_id.in_(item_ids),
+        )
+        .group_by(Dispatch.sales_order_id, DispatchItem.product_id)
+    )
+    moved = {(so, it): float(qty) for so, it, qty in moved_rows.all()}
+
+    committed: dict[int, float] = defaultdict(float)
+    for key, qty in ordered.items():
+        committed[key[1]] += max(0.0, qty - moved.get(key, 0.0))
+    return dict(committed)
+
+
+def _apply_totals(order: SalesOrder, lines: list[SalesOrderItem], extra_charges: list | None) -> None:
+    """Recompute order totals from its line items and extra charges."""
+    total_before_tax = sum(float(l.subtotal or 0) for l in lines)
+    total_tax = sum(float(l.total_price) - float(l.subtotal or 0) for l in lines)
+    total_discount = sum(float(l.quantity) * float(l.unit_price) - float(l.subtotal or 0) for l in lines)
+
+    extra_total = extra_tax = 0.0
+    for charge in extra_charges or []:
+        amount = float(charge.get("amount", 0) or 0)
+        extra_total += amount
+        extra_tax += amount * (float(charge.get("tax_rate", 0) or 0) / 100)
+
+    order.total_amount = round(total_before_tax + total_tax + extra_total + extra_tax, 2)
+    order.tax_amount = round(total_tax + extra_tax, 2)
+    order.discount_amount = round(total_discount, 2)
+
+
+async def _build_lines(db: AsyncSession, order_id: int, items_data) -> list[SalesOrderItem]:
+    lines = []
+    for item_data in items_data:
+        inv_item = await db.get(Item, item_data.item_id)
+        if not inv_item:
+            raise NotFoundError(f"Inventory item {item_data.item_id} not found")
+        subtotal, total_price = _calculate_line(
+            item_data.quantity, item_data.unit_price, item_data.discount, item_data.tax_rate
+        )
+        line = SalesOrderItem(
+            sales_order_id=order_id,
+            item_id=item_data.item_id,
+            description=item_data.description or inv_item.name,
+            quantity=item_data.quantity,
+            unit_price=item_data.unit_price,
+            discount=item_data.discount,
+            tax_rate=item_data.tax_rate,
+            subtotal=subtotal,
+            total_price=total_price,
+        )
+        db.add(line)
+        lines.append(line)
+    return lines
 
 
 class SalesService:
@@ -102,11 +192,6 @@ class SalesService:
         if existing.scalar_one_or_none():
             raise ConflictError("SalesOrder with this number already exists")
 
-        # Calculate totals from items
-        total_before_tax = 0.0
-        total_tax = 0.0
-        total_discount = 0.0
-
         order = SalesOrder(
             order_number=order_number,
             customer_id=data.customer_id,
@@ -127,60 +212,11 @@ class SalesService:
         db.add(order)
         await db.flush()
 
-        for item_data in data.items:
-            # Validate inventory item exists
-            inv_item = await db.get(Item, item_data.item_id)
-            if not inv_item:
-                raise NotFoundError(f"Inventory item {item_data.item_id} not found")
-
-            subtotal, total_price = _calculate_line(
-                item_data.quantity, item_data.unit_price,
-                item_data.discount, item_data.tax_rate
-            )
-            gross = item_data.quantity * item_data.unit_price
-            discount_amt = gross - subtotal
-            tax_amt = total_price - subtotal
-
-            total_before_tax += subtotal
-            total_tax += tax_amt
-            total_discount += discount_amt
-
-            so_item = SalesOrderItem(
-                sales_order_id=order.id,
-                item_id=item_data.item_id,
-                description=item_data.description or inv_item.name,
-                quantity=item_data.quantity,
-                unit_price=item_data.unit_price,
-                discount=item_data.discount,
-                tax_rate=item_data.tax_rate,
-                subtotal=subtotal,
-                total_price=total_price,
-            )
-            db.add(so_item)
-
-        extra_charges_total = 0.0
-        extra_charges_tax = 0.0
-        if data.extra_charges:
-            for charge in data.extra_charges:
-                amount = float(charge.get("amount", 0))
-                tax_rate = float(charge.get("tax_rate", 0))
-                extra_charges_total += amount
-                extra_charges_tax += amount * (tax_rate / 100)
-
-        order.total_amount = round(total_before_tax + total_tax + extra_charges_total + extra_charges_tax, 2)
-        order.tax_amount = round(total_tax + extra_charges_tax, 2)
-        order.discount_amount = round(total_discount, 2)
-
+        lines = await _build_lines(db, order.id, data.items)
+        _apply_totals(order, lines, data.extra_charges)
         await db.flush()
 
-        # Reload with relationships
-        result = await db.execute(
-            select(SalesOrder)
-            .options(selectinload(SalesOrder.items).joinedload(SalesOrderItem.inventory_item))
-            .options(joinedload(SalesOrder.customer))
-            .where(SalesOrder.id == order.id)
-        )
-        return result.scalar_one()
+        return await SalesService.get_order(db, order.id)
 
     @staticmethod
     async def get_order(db: AsyncSession, order_id: int) -> SalesOrder:
@@ -189,6 +225,8 @@ class SalesService:
             .options(selectinload(SalesOrder.items).joinedload(SalesOrderItem.inventory_item))
             .options(joinedload(SalesOrder.customer))
             .where(SalesOrder.id == order_id)
+            # Refresh objects already in the session so edited items/totals are current.
+            .execution_options(populate_existing=True)
         )
         order = result.unique().scalar_one_or_none()
         if not order:
@@ -301,60 +339,17 @@ class SalesService:
         if data.attachments is not None:
             order.attachments = data.attachments
 
-        # Update items if provided
+        # Update items if provided; totals follow items and extra charges.
         if data.items is not None:
-            # Remove old items
-            for old_item in order.items:
-                await db.delete(old_item)
+            if not data.items:
+                raise ConflictError("A sales order needs at least one item")
+            for old_item in list(order.items):
+                order.items.remove(old_item)
             await db.flush()
-
-            total_before_tax = 0.0
-            total_tax = 0.0
-            total_discount = 0.0
-
-            for item_data in data.items:
-                inv_item = await db.get(Item, item_data.item_id)
-                if not inv_item:
-                    raise NotFoundError(f"Inventory item {item_data.item_id} not found")
-
-                subtotal, total_price = _calculate_line(
-                    item_data.quantity, item_data.unit_price,
-                    item_data.discount, item_data.tax_rate
-                )
-                gross = item_data.quantity * item_data.unit_price
-                discount_amt = gross - subtotal
-                tax_amt = total_price - subtotal
-
-                total_before_tax += subtotal
-                total_tax += tax_amt
-                total_discount += discount_amt
-
-                so_item = SalesOrderItem(
-                    sales_order_id=order.id,
-                    item_id=item_data.item_id,
-                    description=item_data.description or inv_item.name,
-                    quantity=item_data.quantity,
-                    unit_price=item_data.unit_price,
-                    discount=item_data.discount,
-                    tax_rate=item_data.tax_rate,
-                    subtotal=subtotal,
-                    total_price=total_price,
-                )
-                db.add(so_item)
-
-            extra_charges_list = data.extra_charges if data.extra_charges is not None else order.extra_charges
-            extra_charges_total = 0.0
-            extra_charges_tax = 0.0
-            if extra_charges_list:
-                for charge in extra_charges_list:
-                    amount = float(charge.get("amount", 0))
-                    tax_rate = float(charge.get("tax_rate", 0))
-                    extra_charges_total += amount
-                    extra_charges_tax += amount * (tax_rate / 100)
-
-            order.total_amount = round(total_before_tax + total_tax + extra_charges_total + extra_charges_tax, 2)
-            order.tax_amount = round(total_tax + extra_charges_tax, 2)
-            order.discount_amount = round(total_discount, 2)
+            lines = await _build_lines(db, order.id, data.items)
+            _apply_totals(order, lines, order.extra_charges)
+        elif data.extra_charges is not None:
+            _apply_totals(order, list(order.items), order.extra_charges)
 
         await db.flush()
 
@@ -363,7 +358,11 @@ class SalesService:
 
     @staticmethod
     async def confirm_order(db: AsyncSession, order_id: int) -> SalesOrder:
-        """Transition to CONFIRMED — reserves inventory stock."""
+        """Transition to CONFIRMED — commits stock against other open orders.
+
+        Stock is not deducted here; it leaves inventory when the goods are packed
+        for dispatch (or shipped directly). Deducting at both points double-counts.
+        """
         order = await SalesService.get_order(db, order_id)
 
         if OrderStatus.CONFIRMED not in VALID_TRANSITIONS.get(order.status, []):
@@ -372,34 +371,23 @@ class SalesService:
                 f"Valid transitions: {[s.value for s in VALID_TRANSITIONS.get(order.status, [])]}"
             )
 
-        # Reserve stock for each item
+        needed: dict[int, float] = defaultdict(float)
         for so_item in order.items:
-            inv_item = await db.get(Item, so_item.item_id)
+            needed[so_item.item_id] += float(so_item.quantity)
+        committed = await committed_quantities(db, list(needed), exclude_order_id=order.id)
+
+        for item_id, qty in needed.items():
+            inv_item = await db.get(Item, item_id)
             if not inv_item:
-                raise NotFoundError(f"Inventory item {so_item.item_id} not found")
-
-            available = float(inv_item.current_stock)
-            needed = float(so_item.quantity)
-
-            if needed > available:
+                raise NotFoundError(f"Inventory item {item_id} not found")
+            available = float(inv_item.current_stock) - committed.get(item_id, 0.0)
+            if qty > available + 1e-9:
                 raise ConflictError(
                     f"Insufficient stock for '{inv_item.name}' (SKU: {inv_item.sku}). "
-                    f"Available: {available}, Requested: {needed}"
+                    f"Available: {max(available, 0.0)}, Requested: {qty}"
+                    + (f" ({committed[item_id]} already committed to other open orders)"
+                       if committed.get(item_id) else "")
                 )
-
-            # Reserve stock (reduce available)
-            inv_item.current_stock = available - needed
-
-            # Audit trail
-            stock_tx = StockTransaction(
-                item_id=so_item.item_id,
-                transaction_type=TransactionType.OUT,
-                quantity=needed,
-                reference_id=order.order_number,
-                reference_type="sales_order_reserved",
-                notes=f"Stock reserved for SO {order.order_number}",
-            )
-            db.add(stock_tx)
 
         order.status = OrderStatus.CONFIRMED
         await db.flush()
@@ -407,7 +395,14 @@ class SalesService:
 
     @staticmethod
     async def ship_order(db: AsyncSession, order_id: int) -> SalesOrder:
-        """Transition to SHIPPED — stock already reserved at confirm."""
+        """Transition to SHIPPED ("Mark Shipped"): ship everything still outstanding.
+
+        Packed dispatches are marked shipped (their stock already left), draft
+        dispatches are cancelled (they never touched stock), and any quantity not
+        covered by a dispatch is deducted from stock here — exactly once.
+        """
+        from app.modules.dispatch.models import Dispatch, DispatchStatus
+
         order = await SalesService.get_order(db, order_id)
 
         if OrderStatus.SHIPPED not in VALID_TRANSITIONS.get(order.status, []):
@@ -415,17 +410,46 @@ class SalesService:
                 f"Cannot ship order in '{order.status.value}' status"
             )
 
-        # Create dispatch record audit trail
+        dispatches = (await db.execute(
+            select(Dispatch).options(selectinload(Dispatch.items))
+            .where(Dispatch.sales_order_id == order.id, Dispatch.status != DispatchStatus.CANCELLED)
+        )).unique().scalars().all()
+
+        needed: dict[int, float] = defaultdict(float)
         for so_item in order.items:
-            stock_tx = StockTransaction(
-                item_id=so_item.item_id,
+            needed[so_item.item_id] += float(so_item.quantity)
+        for d in dispatches:
+            if d.status == DispatchStatus.DRAFT:
+                d.status = DispatchStatus.CANCELLED
+                continue
+            if d.status == DispatchStatus.PACKED:
+                d.status = DispatchStatus.SHIPPED
+                d.dispatch_date = d.dispatch_date or datetime.now(timezone.utc)
+            for d_item in d.items:
+                needed[d_item.product_id] -= float(d_item.quantity)
+
+        for item_id, qty in needed.items():
+            if qty <= 1e-9:
+                continue
+            inv_item = (await db.execute(
+                select(Item).where(Item.id == item_id).with_for_update()
+            )).scalar_one_or_none()
+            if not inv_item:
+                raise NotFoundError(f"Inventory item {item_id} not found")
+            if qty > float(inv_item.current_stock) + 1e-9:
+                raise ConflictError(
+                    f"Insufficient stock for '{inv_item.name}' (SKU: {inv_item.sku}). "
+                    f"Available: {float(inv_item.current_stock)}, Required: {qty}"
+                )
+            inv_item.current_stock = float(inv_item.current_stock) - qty
+            db.add(StockTransaction(
+                item_id=item_id,
                 transaction_type=TransactionType.OUT,
-                quantity=float(so_item.quantity),
+                quantity=qty,
                 reference_id=order.order_number,
                 reference_type="sales_order_shipped",
-                notes=f"Stock dispatched for SO {order.order_number}",
-            )
-            db.add(stock_tx)
+                notes=f"Stock shipped for SO {order.order_number}",
+            ))
 
         order.status = OrderStatus.SHIPPED
         await db.flush()
@@ -475,7 +499,10 @@ class SalesService:
 
     @staticmethod
     async def cancel_order(db: AsyncSession, order_id: int) -> SalesOrder:
-        """Cancel order — releases reserved stock if it was confirmed."""
+        """Cancel order. Blocked while goods are packed or shipped against it;
+        draft dispatches (which never touched stock) are cancelled with it."""
+        from app.modules.dispatch.models import Dispatch, DispatchStatus
+
         order = await SalesService.get_order(db, order_id)
 
         if OrderStatus.CANCELLED not in VALID_TRANSITIONS.get(order.status, []):
@@ -483,22 +510,20 @@ class SalesService:
                 f"Cannot cancel order in '{order.status.value}' status"
             )
 
-        # If order was confirmed or processing, release reserved stock
-        if order.status in (OrderStatus.CONFIRMED, OrderStatus.PROCESSING):
-            for so_item in order.items:
-                inv_item = await db.get(Item, so_item.item_id)
-                if inv_item:
-                    inv_item.current_stock = float(inv_item.current_stock) + float(so_item.quantity)
-
-                    stock_tx = StockTransaction(
-                        item_id=so_item.item_id,
-                        transaction_type=TransactionType.IN,
-                        quantity=float(so_item.quantity),
-                        reference_id=order.order_number,
-                        reference_type="sales_order_cancelled",
-                        notes=f"Stock released from cancelled SO {order.order_number}",
-                    )
-                    db.add(stock_tx)
+        dispatches = (await db.execute(
+            select(Dispatch).where(
+                Dispatch.sales_order_id == order.id,
+                Dispatch.status != DispatchStatus.CANCELLED,
+            )
+        )).unique().scalars().all()
+        active = [d.dispatch_number for d in dispatches if d.status != DispatchStatus.DRAFT]
+        if active:
+            raise ConflictError(
+                f"Cannot cancel order {order.order_number}: goods are already packed/shipped "
+                f"in {', '.join(active)}. Cancel those dispatches first."
+            )
+        for d in dispatches:
+            d.status = DispatchStatus.CANCELLED
 
         order.status = OrderStatus.CANCELLED
         await db.flush()

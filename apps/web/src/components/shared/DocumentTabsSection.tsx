@@ -5,7 +5,7 @@
  * Used in Sales Order and Purchase Order create/detail pages.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Tabs, Input, Button, Typography, Space, InputNumber, Select, Upload, Tag, Tooltip, Popconfirm, Empty } from 'antd';
+import { Tabs, Input, Button, Typography, Space, InputNumber, Select, Upload, Tag, Tooltip, Popconfirm } from 'antd';
 import {
     PlusOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined,
     FileOutlined, FilePdfOutlined, FileImageOutlined, FileExcelOutlined,

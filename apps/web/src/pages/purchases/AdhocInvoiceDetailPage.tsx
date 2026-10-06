@@ -3,7 +3,6 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Tag, Space, Typography, Spin, Tooltip, Divider, Input, InputNumber, Select, DatePicker, Modal } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { LeftOutlined, PrinterOutlined, ShareAltOutlined, EditOutlined, CopyOutlined, StopOutlined, CheckCircleOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, PlusOutlined, DollarOutlined } from '@ant-design/icons';
-import DocumentTabsSection from '@/components/shared/DocumentTabsSection';
 import { purchasesApi, PurchaseOrder } from '@/features/purchases/api';
 import { inventoryApi, InventoryItem } from '@/features/inventory/api';
 import { fetchPartyById, fetchParties, Party } from '@/features/parties/api/parties';

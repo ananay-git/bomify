@@ -10,7 +10,7 @@ import { fetchPartyById, fetchParties, Party } from '@/features/parties/api/part
 import { getUser } from '@/app/store';
 import { extractApiError } from '@/lib/errors';
 import AddCompanyForm from '@/components/layout/AddCompanyForm';
-import DocumentTabsSection, { EMPTY_TABS_DATA, DocumentTabsData } from '@/components/shared/DocumentTabsSection';
+import DocumentTabsSection from '@/components/shared/DocumentTabsSection';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -152,7 +152,7 @@ export default function PurchaseOrderDetailPage() {
         if (!po) return;
         Modal.confirm({
             title: 'Cancel Purchase Order?',
-            content: po.goods_status === 'received'
+            content: po.items.some(i => i.received_quantity > 0)
                 ? 'This PO has received goods. Cancelling will reverse inventory adjustments. Continue?'
                 : 'Are you sure you want to cancel this Purchase Order?',
             okText: 'Yes, Cancel',
@@ -163,7 +163,7 @@ export default function PurchaseOrderDetailPage() {
                     const updated = await purchasesApi.cancel(po.id);
                     setPo(updated);
                     message.success('Purchase Order cancelled successfully');
-                } catch { message.error('Failed to cancel Purchase Order'); }
+                } catch (err) { message.error(extractApiError(err, 'Failed to cancel Purchase Order')); }
             },
         });
     };
@@ -710,7 +710,7 @@ export default function PurchaseOrderDetailPage() {
                         size="large"
                         style={{ background: '#1677ff', borderColor: '#1677ff', fontWeight: 600, height: 40 }}
                         onClick={() => navigate(`/app/purchases/${po.id}/inward/create`)}
-                        disabled={isGoodsReceived}
+                        disabled={isGoodsReceived || po.status === 'cancelled'}
                     >
                         {isGoodsReceived ? 'Goods Received' : 'Create Inward'}
                     </Button>

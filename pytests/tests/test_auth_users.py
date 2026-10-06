@@ -82,7 +82,7 @@ async def test_list_users(client: AsyncClient, admin_headers: dict):
 async def test_create_user(client: AsyncClient, admin_headers: dict):
     resp = await client.post("/users/", json={
         "username": "testuser_m4",
-        "email": "testuser_m4@quadstack.local",
+        "email": "testuser_m4@example.com",
         "full_name": "Test User M4",
         "password": "password123",
         "module_permissions": ["dashboard", "sales", "inventory"],

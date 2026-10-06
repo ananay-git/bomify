@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
     Card, Form, Input, DatePicker, Select, Button, Table, Typography,
-    Row, Col, Space, Divider, Tabs, Tag, message
+    Row, Col, Space, Divider, Tag, message
 } from 'antd';
 import {
     DeleteOutlined, QuestionCircleOutlined, FormOutlined,
@@ -19,7 +19,6 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
-const { TextArea } = Input;
 
 interface SOLineItem {
     key: number;
@@ -54,16 +53,13 @@ export default function CreateSalesOrderPage() {
         units: '', currentStock: 0, price: 0, tax: 0, discount: 0,
     }]);
 
-    // Fetch customers (parties with type customer or both)
+    // Fetch customers (fetchParties('customer') already includes "both" parties)
     useEffect(() => {
         const loadCustomers = async () => {
             setLoadingCustomers(true);
             try {
-                const [customerData, bothData] = await Promise.all([
-                    fetchParties('customer'),
-                    fetchParties('both'),
-                ]);
-                setCustomers([...customerData.parties, ...bothData.parties]);
+                const customerData = await fetchParties('customer');
+                setCustomers(customerData.parties);
             } catch { message.error('Failed to load customers'); }
             finally { setLoadingCustomers(false); }
         };

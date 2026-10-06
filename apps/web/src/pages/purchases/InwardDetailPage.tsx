@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Tag, Space, Typography, Spin, Divider } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { LeftOutlined, PrinterOutlined, QrcodeOutlined, StopOutlined } from '@ant-design/icons';
-import DocumentTabsSection from '@/components/shared/DocumentTabsSection';
 import { purchasesApi, PurchaseOrder, GRN } from '@/features/purchases/api';
 import { inventoryApi, InventoryItem } from '@/features/inventory/api';
 import { fetchPartyById, Party } from '@/features/parties/api/parties';

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Card, Form, Input, DatePicker, Select, Button, Table, Typography, Row, Col, Space, Divider, Tabs, Tag } from 'antd';
+import { Card, Form, Input, DatePicker, Select, Button, Table, Typography, Row, Col, Space, Divider, Tag } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { DeleteOutlined, QuestionCircleOutlined, DownloadOutlined, UploadOutlined, FormOutlined, LeftOutlined, EditOutlined, AppstoreAddOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import DocumentTabsSection, { EMPTY_TABS_DATA, DocumentTabsData } from '@/components/shared/DocumentTabsSection';
@@ -19,7 +19,6 @@ import * as XLSX from 'xlsx';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
-const { TextArea } = Input;
 
 interface POLineItem {
     key: number;

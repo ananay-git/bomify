@@ -124,6 +124,7 @@ export interface ProductionReadyItem {
     fg_name: string;
     fg_sku: string;
     completed_quantity: number;
+    remaining_quantity: number;
     available_stock: number;
     linked_sales_order_id: number | null;
     completion_date: string | null;

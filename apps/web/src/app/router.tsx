@@ -17,8 +17,6 @@ import PurchaseOrderListPage from "@/pages/purchases/PurchaseOrderListPage";
 import InventoryListPage from "@/pages/inventory/InventoryListPage";
 import InventoryDashboardPage from "@/pages/inventory/InventoryDashboardPage";
 import SalesOrderListPage from "@/pages/sales/SalesOrderListPage";
-import CreateOrderConfirmationPage from "@/pages/sales/CreateOrderConfirmationPage";
-import OrderConfirmationDetailPage from "@/pages/sales/OrderConfirmationDetailPage";
 import ProductionListPage from "@/pages/production/ProductionListPage";
 import DispatchListPage from "@/pages/dispatch/DispatchListPage";
 import CreateDispatchPage from "@/pages/dispatch/CreateDispatchPage";

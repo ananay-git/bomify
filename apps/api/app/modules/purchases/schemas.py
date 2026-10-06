@@ -3,7 +3,7 @@ Purchases Pydantic schemas.
 """
 from typing import Sequence
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from app.modules.purchases.models import POStatus, PaymentStatus, InvoiceStatus, GoodsStatus, DocumentType
 
 class POItemCreate(BaseModel):
@@ -17,7 +17,7 @@ class POItemResponse(POItemCreate):
     model_config = {"from_attributes": True}
 
 class PurchaseOrderCreate(BaseModel):
-    po_number: str
+    po_number: str | None = None  # generated from the document type when omitted
     supplier_id: int
     document_type: DocumentType | None = None
     linked_sales_order_id: int | None = None
@@ -94,9 +94,15 @@ class PurchaseOrderListResponse(BaseModel):
 # GRN Schemas
 class GRNItemCreate(BaseModel):
     item_id: int
-    received_quantity: float
-    accepted_quantity: float
-    rejected_quantity: float = 0.0
+    received_quantity: float = Field(gt=0)
+    accepted_quantity: float = Field(ge=0)
+    rejected_quantity: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def _quantities_add_up(self):
+        if abs(self.accepted_quantity + self.rejected_quantity - self.received_quantity) > 1e-6:
+            raise ValueError("accepted_quantity + rejected_quantity must equal received_quantity")
+        return self
 
 class GRNCreate(BaseModel):
     po_id: int

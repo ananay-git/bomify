@@ -10,7 +10,7 @@ import {
     DeleteOutlined, PlusOutlined, TruckOutlined, FileTextOutlined,
     DollarOutlined, CarryOutOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
-import DocumentTabsSection, { EMPTY_TABS_DATA, DocumentTabsData } from '@/components/shared/DocumentTabsSection';
+import DocumentTabsSection from '@/components/shared/DocumentTabsSection';
 import { salesApi, SalesOrder, OrderStatus } from '@/features/sales/api';
 import { inventoryApi, InventoryItem } from '@/features/inventory/api';
 import { getUser } from '@/app/store';
@@ -130,12 +130,12 @@ export default function SalesOrderDetailPage() {
         if (!so) return;
 
         const actionMap: Record<string, { fn: (id: number) => Promise<SalesOrder>; label: string; confirm?: string }> = {
-            confirm: { fn: salesApi.confirm, label: 'Confirmed', confirm: 'This will reserve inventory stock for all items. Continue?' },
+            confirm: { fn: salesApi.confirm, label: 'Confirmed', confirm: 'This commits available stock to the order. Stock is deducted when the goods are packed or shipped. Continue?' },
             process: { fn: salesApi.process, label: 'Processing' },
-            ship: { fn: salesApi.ship, label: 'Shipped', confirm: 'This will mark items as dispatched. Continue?' },
+            ship: { fn: salesApi.ship, label: 'Shipped', confirm: 'This ships everything still outstanding: packed dispatches are marked shipped and the remaining quantity is deducted from stock. Continue?' },
             invoice: { fn: salesApi.invoice, label: 'Invoiced' },
             pay: { fn: salesApi.markPaid, label: 'Paid' },
-            cancel: { fn: salesApi.cancel, label: 'Cancelled', confirm: 'This will cancel the order and release any reserved stock. This action cannot be undone.' },
+            cancel: { fn: salesApi.cancel, label: 'Cancelled', confirm: 'This will cancel the order and any draft dispatches. This action cannot be undone.' },
         };
 
         const cfg = actionMap[action];

@@ -2,3 +2,7 @@
 __pycache__
 *.pyc
 .git
+.env
+.env.*
+.pytest_cache
+tests

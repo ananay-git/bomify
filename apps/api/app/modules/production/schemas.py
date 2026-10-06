@@ -175,6 +175,7 @@ class ProductionProcessResponse(BaseModel):
     issued_items: list[IssuedItemResponse] = []
     dispatch_ready: bool = False
     linked_sales_order_id: int | None = None
+    linked_dispatch_status: str | None = None
     model_config = {"from_attributes": True}
 
 

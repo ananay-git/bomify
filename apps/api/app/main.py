@@ -2,8 +2,10 @@
 QuadStack API — FastAPI Application Entry Point
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.modules.users.router import router as users_router
@@ -32,6 +34,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """Referential/unique violations are client conflicts, not server errors."""
+    detail = str(exc.orig).split("DETAIL:")[-1].strip() if exc.orig else str(exc)
+    return JSONResponse(status_code=409, content={"detail": f"Conflict with existing data: {detail}"})
+
 
 # Mount routers
 app.include_router(users_router, prefix="/api")

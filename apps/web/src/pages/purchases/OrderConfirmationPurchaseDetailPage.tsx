@@ -3,7 +3,6 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Tag, Space, Typography, Spin, Tooltip, Divider, Input, InputNumber, Select, DatePicker, Modal } from 'antd';
 import { message } from '@/lib/antdHelper';
 import { LeftOutlined, PrinterOutlined, ShareAltOutlined, EditOutlined, CopyOutlined, StopOutlined, CheckCircleOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, PlusOutlined, FileTextOutlined, InboxOutlined } from '@ant-design/icons';
-import DocumentTabsSection from '@/components/shared/DocumentTabsSection';
 import { purchasesApi, PurchaseOrder } from '@/features/purchases/api';
 import { inventoryApi, InventoryItem } from '@/features/inventory/api';
 import { fetchPartyById, fetchParties, Party } from '@/features/parties/api/parties';
@@ -205,7 +204,7 @@ export default function OrderConfirmationPurchaseDetailPage() {
             {!isEditing && (<div className="flex justify-between items-center mt-6 no-print">
                 <Button icon={<CheckCircleOutlined />} style={{ borderColor: isComplete ? '#d9d9d9' : '#52c41a', color: isComplete ? '#bfbfbf' : '#52c41a', fontWeight: 600, height: 40 }} size="large" onClick={handleMarkComplete} disabled={isComplete}>{isComplete ? 'Completed' : 'Mark As Complete'}</Button>
                 <Space>
-                    <Button type="primary" icon={<InboxOutlined />} size="large" style={{ background: '#1677ff', borderColor: '#1677ff', fontWeight: 600, height: 40 }} onClick={() => navigate(`/app/purchases/${po.id}/inward/create`)} disabled={isGoodsReceived}>{isGoodsReceived ? 'Goods Received' : 'Create Inward'}</Button>
+                    <Button type="primary" icon={<InboxOutlined />} size="large" style={{ background: '#1677ff', borderColor: '#1677ff', fontWeight: 600, height: 40 }} onClick={() => navigate(`/app/purchases/${po.id}/inward/create`)} disabled={isGoodsReceived || po.status === 'cancelled'}>{isGoodsReceived ? 'Goods Received' : 'Create Inward'}</Button>
                     <Button type="default" icon={<FileTextOutlined />} size="large" style={{ borderColor: '#722ed1', color: '#722ed1', fontWeight: 600, height: 40 }} onClick={() => navigate(`/app/purchases/invoice/create?buyerId=${po.supplier_id}&buyerName=${encodeURIComponent(buyer?.name || '')}`)}>Create Invoice</Button>
                 </Space>
             </div>)}
