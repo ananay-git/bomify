@@ -1,0 +1,21 @@
+{
+  "name": "quadstack",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.8.10"
+  },
+  "packageManager": "npm@10.9.0",
+  "dependencies": {
+    "plotly.js": "^3.4.0",
+    "react-plotly.js": "^2.6.0"
+  }
+}

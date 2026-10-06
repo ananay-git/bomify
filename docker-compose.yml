@@ -1,0 +1,103 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quadstack
+      POSTGRES_PASSWORD: quadstack_dev
+      POSTGRES_DB: quadstack
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quadstack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Catches every email the app sends while you're developing — nothing leaves your
+  # machine. Open http://localhost:8025 to read them.
+  # To send real email instead, set SMTP_HOST / SMTP_PORT / SMTP_USERNAME /
+  # SMTP_PASSWORD (and SMTP_USE_TLS=true) in your .env file.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"   # web inbox
+      - "1025:1025"   # SMTP
+
+  api:
+    build: ./apps/api
+    ports:
+      - "8000:8000"
+    environment:
+      CLIENT_NAME: QuadStack
+      APP_ENV: development
+      SECRET_KEY: docker-dev-secret-key
+      POSTGRES_USER: quadstack
+      POSTGRES_PASSWORD: quadstack_dev
+      POSTGRES_DB: quadstack
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: docker-dev-jwt-secret
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+      ADMIN_EMAIL: admin@quadstack.local
+      ADMIN_FULL_NAME: System Administrator
+      # Copilot agent (Groq via OpenAI-compatible endpoint)
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      COPILOT_AGENT_MODEL: ${COPILOT_AGENT_MODEL:-qwen/qwen3-32b}
+      COPILOT_DB_USER: copilot_reader
+      COPILOT_DB_PASSWORD: copilot_reader_pass
+      COPILOT_CHARTS_DIR: /tmp/copilot_charts
+      # Notification emails (owner <-> staff). Defaults send to the local Mailpit inbox.
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: "${SMTP_FROM:-QuadStack <no-reply@quadstack.local>}"
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+    # Override CMD to seed then start with hot reload
+    command: sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # Mount source for hot reload — changes on host reflect instantly
+      - ./apps/api:/app
+
+  web:
+    build: ./apps/web
+    ports:
+      - "5173:5173"
+    environment:
+      # Vite proxy points to the Docker service name
+      VITE_API_PROXY_TARGET: http://api:8000
+    depends_on:
+      - api
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      # Mount source for hot reload
+      - ./apps/web:/app
+      # Keep node_modules from the image, don't overwrite with empty host dir
+      - /app/node_modules
+
+volumes:
+  pgdata:

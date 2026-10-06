@@ -1,0 +1,8 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "dev": ".venv\\Scripts\\python.exe -m app.seed && .venv\\Scripts\\uvicorn.exe app.main:app --reload --port 8000",
+    "dev:unix": ".venv/bin/python -m app.seed && .venv/bin/uvicorn app.main:app --reload --port 8000"
+  }
+}
